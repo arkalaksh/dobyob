@@ -46,8 +46,12 @@ class InviteScreen extends StatelessWidget {
         showSelectedLabels: false,
         showUnselectedLabels: false,
         onTap: (i) {
-          if (i == 0) Navigator.pushReplacementNamed(context, '/home');
-          if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
+          // Only navigate if not already on InviteScreen
+          if (i != 1) {
+            if (i == 0) Navigator.pushReplacementNamed(context, '/home');
+            if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
+            if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
+          }
         },
       ),
       body: SafeArea(
@@ -86,7 +90,7 @@ class InviteScreen extends StatelessWidget {
                   hintText: "Search Contacts...",
                   hintStyle: const TextStyle(fontSize: 14),
                   isDense: true,
-                  prefixIcon: const Icon(Icons.search, color: Color(0xFFF6C646)), // Yellow search icon
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFFF6C646)),
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),

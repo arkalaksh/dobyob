@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'social_buttons.dart';
 
 class AppFooter extends StatelessWidget {
   final String infoText;
@@ -9,9 +8,15 @@ class AppFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(infoText),
-        const SizedBox(height: 8),
-        const SocialButtons(),
+        Text(
+          infoText,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.black54,
+          ),
+        ),
+        SizedBox(height: 8),
       ],
     );
   }
