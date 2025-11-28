@@ -1,8 +1,5 @@
+import 'package:dobyob_1/widgets/social_buttons.dart';
 import 'package:flutter/material.dart';
-import 'package:dobyob_1/widgets/header.dart';
-import '../widgets/app_footer.dart';
-import '../widgets/custom_textfield.dart';
-import '../widgets/social_buttons.dart';
 import 'package:dobyob_1/services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -68,7 +65,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() => isLoading = true);
 
-    // Note: API endpoint is now loginwithotp.php for login flow!
     final res = await apiService.verifyLoginOtp(
       email: emailController.text.trim(),
       otp: otp,
@@ -87,41 +83,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildOtpRow() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(
         6,
-        (index) => Container(
-          width: 44,
-          height: 54,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: otpFocusNodes[index].hasFocus ? Colors.orange : Colors.deepPurple.shade200,
-              width: otpFocusNodes[index].hasFocus ? 2.2 : 1.3,
+        (index) => SizedBox(
+          width: 42,
+          height: 50,
+          child: TextField(
+            controller: otpControllers[index],
+            focusNode: otpFocusNodes[index],
+            maxLength: 1,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 20,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
             ),
-          ),
-          child: Center(
-            child: TextField(
-              controller: otpControllers[index],
-              focusNode: otpFocusNodes[index],
-              maxLength: 1,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 25,
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+            decoration: InputDecoration(
+              counterText: '',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: otpFocusNodes[index].hasFocus
+                      ? const Color(0xFF38BDF8)
+                      : const Color(0xFF1F2937),
+                  width: 1.4,
+                ),
               ),
-              decoration: const InputDecoration(
-                counterText: '',
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 6),
-              ),
-              onChanged: (value) => _onOtpChanged(index, value),
+              filled: true,
+              fillColor: const Color(0xFF111827),
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
             ),
+            onChanged: (value) => _onOtpChanged(index, value),
           ),
         ),
       ),
@@ -130,113 +125,235 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    const bgColor = Color(0xFF020617);
+    const fieldColor = Color(0xFF020617);
+    const circleColor = Color(0xFF0EA5E9);
+    final stepText = otpFieldVisible ? 'Step 2 of 2' : 'Step 1 of 2';
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      backgroundColor: bgColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: size.height,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Column(
-                children: const [
-                  SizedBox(height: 10),
-                  AppHeader(
-                    icon: Icons.person,
-                    title: 'Login Account',
-                    subtitle: 'Welcome back to DobYob',
-                  ),
-                ],
-              ),
-
-              // Middle Section
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CustomTextField(
-                    label: 'Email address',
-                    hint: 'Enter your email',
-                    isPassword: false,
-                    controller: emailController,
-                  ),
-                  const SizedBox(height: 8),
-
-                  if (otpFieldVisible)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 7.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          _buildOtpRow(),
-                          const SizedBox(height: 10),
-                        ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              children: [
+                // Top step text
+                Padding(
+                  padding:
+                      const EdgeInsets.only(left: 20, right: 20, top: 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      stepText,
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 13,
                       ),
                     ),
-
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow[700],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: isLoading
-                        ? null
-                        : (otpFieldVisible ? _verifyOtp : _sendOtp),
-                    child: isLoading
-                        ? const SizedBox(
-                            width: 26,
-                            height: 26,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.7,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            otpFieldVisible ? "Verify OTP" : "Send OTP",
-                            style: const TextStyle(color: Colors.white, fontSize: 16),
-                          ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("Don't have an account?"),
-                      const SizedBox(width: 4),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(context, '/signin');
-                        },
-                        child: const Text(
-                          "Sign In",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.purple,
+                ),
+                const SizedBox(height: 4),
+
+                // Scrollable content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 62),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Center(
+                          child: Column(
+                            children: const [
+                              CircleAvatar(
+                                radius: 28,
+                                backgroundColor: circleColor,
+                                child: Icon(Icons.person,
+                                    color: Colors.white, size: 26),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Login Account',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Welcome back to DobYob',
+                                style: TextStyle(
+                                  color: Color(0xFF9CA3AF),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+
+                        const SizedBox(height: 56),
+
+                        // Email field
+                        const Text(
+                          'Email address',
+                          style: TextStyle(
+                            color: Color(0xFFD1D5DB),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: emailController,
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: const Color(0xFF38BDF8),
+                          decoration: InputDecoration(
+                            hintText: 'Enter your email',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF6B7280),
+                            ),
+                            filled: true,
+                            fillColor: fieldColor,
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(
+                                  color: Color(0xFF1F2937)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF38BDF8),
+                                width: 1.5,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 12,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // OTP section
+                        if (otpFieldVisible) ...[
+                          const Text(
+                            'OTP',
+                            style: TextStyle(
+                              color: Color(0xFFD1D5DB),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          _buildOtpRow(),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Enter the 6‑digit code sent to your email.',
+                            style: TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ] else ...[
+                          const SizedBox(height: 4),
+                        ],
+
+                        // Main button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: circleColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12),
+                            ),
+                            onPressed: isLoading
+                                ? null
+                                : (otpFieldVisible
+                                    ? _verifyOtp
+                                    : _sendOtp),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    otpFieldVisible
+                                        ? "Verify OTP"
+                                        : "Send OTP",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Signup link
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Don't have an account? ",
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pushReplacementNamed(
+                                    context, '/signup');
+                              },
+                              child: const Text(
+                                "Sign Up",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.purpleAccent,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Social buttons only when OTP not visible
+                        if (!otpFieldVisible) ...[
+                          const Center(
+                            child: Text(
+                              'Or Sign in with',
+                              style: TextStyle(
+                                color: Color(0xFF9CA3AF),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const SocialButtons(),
+                          const SizedBox(height: 12),
+                        ],
+                      ],
+                    ),
                   ),
-                ],
-              ),
-              // Bottom Section
-              Column(
-                children: const [
-                  SizedBox(height: 10),
-                  AppFooter(infoText: 'Or Sign up with'),
-                  SizedBox(height: 10),
-                  SocialButtons(),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

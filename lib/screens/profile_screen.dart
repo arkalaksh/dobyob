@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'package:dobyob_1/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:image_picker/image_picker.dart';
 
-// Main Profile Page
+/// ===================== PROFILE SCREEN =====================
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
   @override
@@ -9,38 +13,98 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String userName = "Your Name";
+  String userId = "5"; // TODO: Replace with actual userId
+
+  String userName = "";
   String userBusiness = "";
   String userProfession = "";
   String userIndustry = "";
-  String userEducation = ""; // This now can be a joined string from list
-  String userCity = "Mumbai";
-  String userState = "Maharashtra";
-  String userCountry = "India";
-  String userDob = "01/01/2000";
-  String userEmail = "your@email.com";
-  String userMobile = "+91 9820012345";
+  String userEducation = "";
+  String userCity = "";
+  String userState = "";
+  String userCountry = "";
+  String userDob = "";
+  String userEmail = "";
+  String userMobile = "";
   String userAddress = "";
+  String userProfilePicUrl = "";
 
-  // Added lists for multiple positions and education
-  List<String> userPositions = [];
-  List<String> userEducationList = [];
+  List<String> userPositions = <String>[];
+  List<String> userEducationList = <String>[];
+
+  ApiService apiService = ApiService();
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadProfile();
+  }
+
+  Future<void> loadProfile() async {
+    setState(() => isLoading = true);
+    final user = await apiService.getProfile(userId);
+    setState(() {
+      isLoading = false;
+      if (user != null) {
+        userName = user['full_name'] ?? "";
+        userBusiness = user['business'] ?? "";
+        userProfession = user['profession'] ?? "";
+        userIndustry = user['industry'] ?? "";
+        userEducation = user['education'] ?? "";
+        userProfilePicUrl = user['profile_pic'] ?? "";
+
+        userEducationList = userEducation.isNotEmpty
+            ? userEducation
+                .split(',')
+                .map<String>((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : <String>[];
+
+        final String positionsRaw = user['positions'] ?? "";
+        userPositions = positionsRaw.isNotEmpty
+            ? positionsRaw
+                .split(',')
+                .map<String>((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : <String>[];
+
+        userCity = user['city'] ?? "";
+        userState = user['state'] ?? "";
+        userCountry = user['country'] ?? "";
+        userDob = user['date_of_birth'] ?? "";
+        userEmail = user['email'] ?? "";
+        userMobile = user['phone'] ?? "";
+        userAddress = user['address'] ?? "";
+      }
+    });
+  }
+
+  Text _infoText(String t) =>
+      Text(t, style: const TextStyle(fontSize: 15, color: Colors.white));
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFF6C646);
+    const bgColor = Color(0xFF020617);
+    const cardColor = Color(0xFF020817);
+    const borderColor = Color(0xFF1F2937);
+    const accent = Color(0xFF0EA5E9);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: const Color(0xFF020817),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person_add_alt_1, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box_rounded, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person, color: gold), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.person_add_alt_1), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.add_box_rounded), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
         ],
         currentIndex: 3,
-        selectedItemColor: gold,
-        unselectedItemColor: gold,
+        selectedItemColor: accent,
+        unselectedItemColor: const Color(0xFF6B7280),
         showSelectedLabels: false,
         showUnselectedLabels: false,
         onTap: (i) {
@@ -48,158 +112,240 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (i == 0) Navigator.pushReplacementNamed(context, '/home');
             if (i == 1) Navigator.pushReplacementNamed(context, '/invite');
             if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
-            if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
           }
         },
       ),
-      body: ListView(
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                height: 110,
-                width: double.infinity,
-                color: gold.withOpacity(0.2),
-              ),
-              Positioned(
-                left: 22,
-                bottom: -32,
-                child: CircleAvatar(
-                  radius: 46,
-                  backgroundColor: gold,
-                  child: CircleAvatar(
-                    radius: 43,
-                    backgroundColor: Colors.white,
-                    backgroundImage: NetworkImage(
-                      "https://randomuser.me/api/portraits/men/44.jpg",
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: accent),
+            )
+          : ListView(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      height: 110,
+                      width: double.infinity,
+                      color: const Color(0xFF0B1120),
+                    ),
+                    Positioned(
+                      left: 22,
+                      bottom: -32,
+                      child: CircleAvatar(
+                        radius: 46,
+                        backgroundColor: accent,
+                        child: CircleAvatar(
+                          radius: 43,
+                          backgroundColor: const Color(0xFF020817),
+                          backgroundImage: (userProfilePicUrl.isNotEmpty)
+                              ? NetworkImage(
+                                  'https://arkalaksh.com/dobyob/$userProfilePicUrl',
+                                )
+                              : null,
+                          child: (userProfilePicUrl.isEmpty)
+                              ? const Icon(Icons.person,
+                                  color: Colors.white, size: 40)
+                              : null,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 16,
+                      top: 16,
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: const Color(0xFF020817),
+                        child: const Icon(Icons.settings,
+                            color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 42),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Card(
+                    color: cardColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: borderColor),
+                    ),
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                userName.isEmpty ? "Profile" : userName,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.edit,
+                                    color: accent, size: 22),
+                                onPressed: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => EditProfileScreen(
+                                        userId: userId,
+                                        initialName: userName,
+                                        initialBusiness: userBusiness,
+                                        initialProfession: userProfession,
+                                        initialIndustry: userIndustry,
+                                        initialEducation: userEducation,
+                                        initialEducationList:
+                                            List<String>.from(
+                                                userEducationList),
+                                        initialPositions:
+                                            List<String>.from(userPositions),
+                                        initialCity: userCity,
+                                        initialState: userState,
+                                        initialCountry: userCountry,
+                                        initialDob: userDob,
+                                        initialEmail: userEmail,
+                                        initialMobile: userMobile,
+                                        initialAddress: userAddress,
+                                        initialProfilePicUrl:
+                                            userProfilePicUrl,
+                                      ),
+                                    ),
+                                  );
+
+                                  if (result != null &&
+                                      result is Map<String, dynamic>) {
+                                    setState(() {
+                                      userName =
+                                          result['name'] ?? userName;
+                                      userBusiness =
+                                          result['business'] ??
+                                              userBusiness;
+                                      userProfession =
+                                          result['profession'] ??
+                                              userProfession;
+                                      userIndustry =
+                                          result['industry'] ??
+                                              userIndustry;
+                                      userEducation =
+                                          result['education'] ??
+                                              userEducation;
+                                      userEducationList =
+                                          (result['educationList']
+                                                      as List?)
+                                                  ?.cast<String>() ??
+                                              userEducationList;
+                                      userPositions =
+                                          (result['positions'] as List?)
+                                                  ?.cast<String>() ??
+                                              userPositions;
+                                      userCity =
+                                          result['city'] ?? userCity;
+                                      userState =
+                                          result['state'] ?? userState;
+                                      userCountry =
+                                          result['country'] ??
+                                              userCountry;
+                                      userDob =
+                                          result['dob'] ?? userDob;
+                                      userEmail =
+                                          result['email'] ?? userEmail;
+                                      userMobile =
+                                          result['mobile'] ?? userMobile;
+                                      userAddress =
+                                          result['address'] ??
+                                              userAddress;
+                                      userProfilePicUrl =
+                                          result['profile_pic_url'] ??
+                                              userProfilePicUrl;
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28, color: borderColor),
+                          if (userBusiness.isNotEmpty)
+                            _infoText("Business: $userBusiness"),
+                          if (userIndustry.isNotEmpty)
+                            _infoText("Industry: $userIndustry"),
+                          if (userProfession.isNotEmpty)
+                            _infoText("Profession: $userProfession"),
+                          if (userEducationList.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Education:",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                ...userEducationList
+                                    .map((edu) => _infoText(edu))
+                                    .toList(),
+                              ],
+                            )
+                          else if (userEducation.isNotEmpty)
+                            _infoText("Education: $userEducation"),
+                          if (userPositions.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 8),
+                                const Text(
+                                  "Positions:",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                ...userPositions
+                                    .map((pos) => _infoText(pos))
+                                    .toList(),
+                              ],
+                            ),
+                          if (userCity.isNotEmpty)
+                            _infoText("City: $userCity"),
+                          if (userState.isNotEmpty)
+                            _infoText("State: $userState"),
+                          if (userCountry.isNotEmpty)
+                            _infoText("Country: $userCountry"),
+                          const Divider(height: 18, color: borderColor),
+                          if (userEmail.isNotEmpty)
+                            _infoText("Email: $userEmail"),
+                          if (userMobile.isNotEmpty)
+                            _infoText("Mobile: $userMobile"),
+                          if (userAddress.isNotEmpty)
+                            _infoText("Address: $userAddress"),
+                          if (userDob.isNotEmpty)
+                            _infoText("DOB: $userDob"),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                right: 16,
-                top: 16,
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.settings, color: gold, size: 18),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 42),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Card(
-              elevation: 1.4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          userName,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: Icon(Icons.edit, color: gold, size: 22),
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => EditProfileScreen(
-                                  initialName: userName,
-                                  initialBusiness: userBusiness,
-                                  initialProfession: userProfession,
-                                  initialIndustry: userIndustry,
-                                  initialEducation: userEducation,
-                                  initialEducationList: userEducationList,
-                                  initialPositions: userPositions,
-                                  initialCity: userCity,
-                                  initialState: userState,
-                                  initialCountry: userCountry,
-                                  initialDob: userDob,
-                                  initialEmail: userEmail,
-                                  initialMobile: userMobile,
-                                  initialAddress: userAddress,
-                                ),
-                              ),
-                            );
-                            if (result != null) {
-                              setState(() {
-                                userName = result['name'];
-                                userBusiness = result['business'];
-                                userProfession = result['profession'];
-                                userIndustry = result['industry'];
-                                userEducation = result['education'];
-                                userEducationList = List<String>.from(result['educationList'] ?? []);
-                                userPositions = List<String>.from(result['positions'] ?? []);
-                                userCity = result['city'];
-                                userState = result['state'];
-                                userCountry = result['country'];
-                                userDob = result['dob'];
-                                userEmail = result['email'];
-                                userMobile = result['mobile'];
-                                userAddress = result['address'];
-                              });
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 28),
-                    if (userBusiness.isNotEmpty)
-                      Text("Business: $userBusiness", style: const TextStyle(fontSize: 15)),
-                    if (userIndustry.isNotEmpty)
-                      Text("Industry: $userIndustry", style: const TextStyle(fontSize: 15)),
-                    if (userProfession.isNotEmpty)
-                      Text("Profession: $userProfession", style: const TextStyle(fontSize: 15)),
-                    if (userEducationList.isNotEmpty)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text("Education:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          ...userEducationList.map((edu) => Text(edu, style: const TextStyle(fontSize: 15))).toList(),
-                        ],
-                      )
-                    else if (userEducation.isNotEmpty)
-                      Text("Education: $userEducation", style: const TextStyle(fontSize: 15)),
-                    if (userPositions.isNotEmpty)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 8),
-                          const Text("Positions:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          ...userPositions.map((pos) => Text(pos, style: const TextStyle(fontSize: 15))).toList(),
-                        ],
-                      ),
-                    const SizedBox(height: 8),
-                    Text("City: $userCity", style: const TextStyle(fontSize: 15)),
-                    Text("State: $userState", style: const TextStyle(fontSize: 15)),
-                    Text("Country: $userCountry", style: const TextStyle(fontSize: 15)),
-                    const Divider(height: 18),
-                    Text("Email: $userEmail", style: const TextStyle(fontSize: 15)),
-                    Text("Mobile: $userMobile", style: const TextStyle(fontSize: 15)),
-                    if (userAddress.isNotEmpty)
-                      Text("Address: $userAddress", style: const TextStyle(fontSize: 15)),
-                    Text("DOB: $userDob", style: const TextStyle(fontSize: 15)),
-                  ],
-                ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
 
+/// ===================== EDIT PROFILE SCREEN =====================
+
 class EditProfileScreen extends StatefulWidget {
+  final String userId;
   final String initialName;
   final String initialBusiness;
   final String initialProfession;
@@ -214,9 +360,11 @@ class EditProfileScreen extends StatefulWidget {
   final String initialEmail;
   final String initialMobile;
   final String initialAddress;
+  final String initialProfilePicUrl;
 
   const EditProfileScreen({
     super.key,
+    required this.userId,
     required this.initialName,
     required this.initialBusiness,
     required this.initialProfession,
@@ -231,6 +379,7 @@ class EditProfileScreen extends StatefulWidget {
     required this.initialEmail,
     required this.initialMobile,
     required this.initialAddress,
+    required this.initialProfilePicUrl,
   });
 
   @override
@@ -253,37 +402,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String mobileCountryCode = 'IN';
   String address = '';
 
-  // Controllers for multiple positions and education entries
+  File? selectedProfilePic;
+  String profilePicUrl = '';
+
   List<TextEditingController> positionControllers = [];
   List<TextEditingController> educationControllers = [];
+  ApiService apiService = ApiService();
 
   @override
   void initState() {
+    super.initState();
     nameController = TextEditingController(text: widget.initialName);
-    businessController = TextEditingController(text: widget.initialBusiness);
-    professionController = TextEditingController(text: widget.initialProfession);
-    industryController = TextEditingController(text: widget.initialIndustry);
-    educationController = TextEditingController(text: widget.initialEducation);
+    businessController =
+        TextEditingController(text: widget.initialBusiness);
+    professionController =
+        TextEditingController(text: widget.initialProfession);
+    industryController =
+        TextEditingController(text: widget.initialIndustry);
+    educationController =
+        TextEditingController(text: widget.initialEducation);
     cityController = TextEditingController(text: widget.initialCity);
     stateController = TextEditingController(text: widget.initialState);
-    countryController = TextEditingController(text: widget.initialCountry);
+    countryController =
+        TextEditingController(text: widget.initialCountry);
     dobController = TextEditingController(text: widget.initialDob);
 
     email = widget.initialEmail;
     mobile = widget.initialMobile.replaceAll(RegExp('[^0-9]'), '');
     address = widget.initialAddress;
 
-    // Init dynamic education controllers
+    profilePicUrl = widget.initialProfilePicUrl;
+
     educationControllers = widget.initialEducationList.isNotEmpty
-        ? widget.initialEducationList.map((e) => TextEditingController(text: e)).toList()
-        : [TextEditingController()];
+        ? widget.initialEducationList
+            .map<TextEditingController>(
+                (e) => TextEditingController(text: e))
+            .toList()
+        : <TextEditingController>[TextEditingController()];
 
-    // Init dynamic position controllers
     positionControllers = widget.initialPositions.isNotEmpty
-        ? widget.initialPositions.map((p) => TextEditingController(text: p)).toList()
-        : [TextEditingController()];
-
-    super.initState();
+        ? widget.initialPositions
+            .map<TextEditingController>(
+                (p) => TextEditingController(text: p))
+            .toList()
+        : <TextEditingController>[TextEditingController()];
   }
 
   @override
@@ -306,6 +468,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  Future<void> pickProfilePic() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        selectedProfilePic = File(picked.path);
+        profilePicUrl = "";
+      });
+    }
+  }
+
   void updateContactInfoFromEdit(Map<String, dynamic> result) {
     setState(() {
       email = result['email'];
@@ -315,9 +488,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _label(String s) => Padding(
-    padding: const EdgeInsets.only(top: 10, bottom: 5),
-    child: Text(s, style: const TextStyle(fontWeight: FontWeight.w600)),
-  );
+        padding: const EdgeInsets.only(top: 10, bottom: 5),
+        child: Text(
+          s,
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+      );
 
   Widget _entry(
     TextEditingController ctrl,
@@ -332,43 +509,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         keyboardType: keyboardType,
         readOnly: readOnly,
         onTap: onTap,
+        style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: hint,
+          hintStyle: const TextStyle(color: Color(0xFF6B7280)),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF1F2937)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide:
+                const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
+          ),
           suffixIcon: suffixIcon,
         ),
       );
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFF6C646);
+    const bgColor = Color(0xFF020617);
+    const accent = Color(0xFF0EA5E9);
+
     return Scaffold(
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text('Edit Profile', style: TextStyle(color: Colors.black)),
-        iconTheme: const IconThemeData(color: Colors.black),
+        backgroundColor: bgColor,
+        title: const Text('Edit Profile',
+            style: TextStyle(color: Colors.white)),
+        iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person_add_alt_1, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box_rounded, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person, color: gold), label: ''),
-        ],
-        currentIndex: 3,
-        selectedItemColor: gold,
-        unselectedItemColor: gold,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        onTap: (i) {
-          if (i != 3) {
-            if (i == 0) Navigator.pushReplacementNamed(context, '/home');
-            if (i == 1) Navigator.pushReplacementNamed(context, '/invite');
-            if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
-            if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
-          }
-        },
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
@@ -376,25 +547,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: GestureDetector(
+                  onTap: pickProfilePic,
+                  child: CircleAvatar(
+                    radius: 52,
+                    backgroundColor: const Color(0xFF111827),
+                    child: selectedProfilePic != null
+                        ? ClipOval(
+                            child: Image.file(
+                              selectedProfilePic!,
+                              width: 96,
+                              height: 96,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        : (profilePicUrl.isNotEmpty
+                            ? ClipOval(
+                                child: Image.network(
+                                'https://arkalaksh.com/dobyob/$profilePicUrl',
+                                width: 96,
+                                height: 96,
+                                fit: BoxFit.cover,
+                              ))
+                            : const Icon(Icons.camera_alt,
+                                size: 40, color: Colors.white)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
               _label("Full Name"),
               _entry(nameController, 'Enter your name'),
               _label("Business Info"),
               _entry(businessController, 'Tell us about your business'),
               _label("Industry / Professional Field"),
-              _entry(industryController, 'Enter your industry or professional field'),
+              _entry(industryController,
+                  'Enter your industry or professional field'),
               _label("Profession"),
               _entry(professionController, 'Enter your profession'),
-
-              // Positions Section with dynamic entries
               _label("Positions"),
               ...positionControllers.asMap().entries.map((entry) {
                 int idx = entry.key;
                 TextEditingController controller = entry.value;
                 return Row(
                   children: [
-                    Expanded(child: _entry(controller, "Enter position details")),
+                    Expanded(
+                        child: _entry(
+                            controller, "Enter position details")),
                     IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
+                      icon:
+                          const Icon(Icons.delete, color: Colors.red),
                       onPressed: () {
                         setState(() {
                           if (positionControllers.length > 1) {
@@ -402,30 +604,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           }
                         });
                       },
-                    )
+                    ),
                   ],
                 );
               }).toList(),
               TextButton.icon(
-                icon: Icon(Icons.add),
-                label: Text("Add New Position"),
+                icon: const Icon(Icons.add, color: accent),
+                label: const Text("Add New Position",
+                    style: TextStyle(color: accent)),
                 onPressed: () {
                   setState(() {
                     positionControllers.add(TextEditingController());
                   });
                 },
               ),
-
-              // Education Section with dynamic entries
               _label("Education"),
               ...educationControllers.asMap().entries.map((entry) {
                 int idx = entry.key;
                 TextEditingController controller = entry.value;
                 return Row(
                   children: [
-                    Expanded(child: _entry(controller, "Enter education details")),
+                    Expanded(
+                        child:
+                            _entry(controller, "Enter education details")),
                     IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
+                      icon:
+                          const Icon(Icons.delete, color: Colors.red),
                       onPressed: () {
                         setState(() {
                           if (educationControllers.length > 1) {
@@ -433,20 +637,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           }
                         });
                       },
-                    )
+                    ),
                   ],
                 );
               }).toList(),
               TextButton.icon(
-                icon: Icon(Icons.add),
-                label: Text("Add New Education"),
+                icon: const Icon(Icons.add, color: accent),
+                label: const Text("Add New Education",
+                    style: TextStyle(color: accent)),
                 onPressed: () {
                   setState(() {
                     educationControllers.add(TextEditingController());
                   });
                 },
               ),
-
               _label("City"),
               _entry(cityController, 'Enter your city'),
               _label("State"),
@@ -458,32 +662,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 dobController,
                 'Select DOB',
                 readOnly: true,
-                suffixIcon: Icon(Icons.calendar_today, color: gold),
+                suffixIcon:
+                    const Icon(Icons.calendar_today, color: accent),
                 onTap: () async {
                   DateTime? picked = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now().subtract(const Duration(days: 365 * 20)),
+                    initialDate: DateTime.now()
+                        .subtract(const Duration(days: 365 * 20)),
                     firstDate: DateTime(1900),
                     lastDate: DateTime.now(),
                   );
                   if (picked != null) {
-                    dobController.text = "${picked.day}/${picked.month}/${picked.year}";
+                    dobController.text =
+                        "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
                   }
                 },
               ),
               const SizedBox(height: 32),
               GestureDetector(
                 child: Card(
-                  color: Colors.blue.shade50,
+                  color: const Color(0xFF0B1120),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 10),
                     child: Row(
-                      children: [
-                        const Icon(Icons.contact_mail, color: Colors.blue, size: 21),
-                        const SizedBox(width: 8),
-                        const Text('Contact Info', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.blue)),
-                        const Spacer(),
-                        const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                      children: const [
+                        Icon(Icons.contact_mail,
+                            color: Colors.white, size: 21),
+                        SizedBox(width: 8),
+                        Text('Contact Info',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                        Spacer(),
+                        Icon(Icons.arrow_forward_ios,
+                            size: 16, color: Color(0xFF6B7280)),
                       ],
                     ),
                   ),
@@ -500,49 +714,94 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   );
                   if (result != null) {
-                    updateContactInfoFromEdit(result);
+                    updateContactInfoFromEdit(
+                        result as Map<String, dynamic>);
                   }
                 },
               ),
               if (address.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(left: 8, right: 8, top: 14),
-                  child: Text("Address: $address", style: const TextStyle(fontSize: 15)),
+                  child: Text("Address: $address",
+                      style: const TextStyle(
+                          fontSize: 15, color: Colors.white)),
                 ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     final joinedMobile = '+91 $mobile';
+                    List<String> positions = positionControllers
+                        .map((c) => c.text)
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    List<String> educationList = educationControllers
+                        .map((c) => c.text)
+                        .where((e) => e.isNotEmpty)
+                        .toList();
 
-                    // Extract lists of positions and education text values to send back
-                    List<String> positions = positionControllers.map((c) => c.text).toList();
-                    List<String> educationList = educationControllers.map((c) => c.text).toList();
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) =>
+                          const Center(child: CircularProgressIndicator()),
+                    );
 
-                    Navigator.pop(context, {
-                      'name': nameController.text,
-                      'business': businessController.text,
-                      'profession': professionController.text,
-                      'industry': industryController.text,
-                      'education': educationController.text, // fallback for original usage
-                      'educationList': educationList,
-                      'positions': positions,
-                      'city': cityController.text,
-                      'state': stateController.text,
-                      'country': countryController.text,
-                      'dob': dobController.text,
-                      'email': email,
-                      'mobile': joinedMobile,
-                      'address': address,
-                    });
+                    final res = await apiService.updateProfile(
+                      userId: widget.userId,
+                      fullName: nameController.text,
+                      business: businessController.text,
+                      profession: professionController.text,
+                      industry: industryController.text,
+                      dateOfBirth: dobController.text,
+                      email: email,
+                      phone: joinedMobile,
+                      address: address,
+                      city: cityController.text,
+                      state: stateController.text,
+                      country: countryController.text,
+                      educationList: educationList,
+                      positionsList: positions,
+                      profilePic: selectedProfilePic,
+                    );
+
+                    Navigator.of(context, rootNavigator: true).pop();
+
+                    if (res['success'] == true) {
+                      Navigator.pop(context, {
+                        'name': nameController.text,
+                        'business': businessController.text,
+                        'profession': professionController.text,
+                        'industry': industryController.text,
+                        'education': educationController.text,
+                        'educationList': educationList,
+                        'positions': positions,
+                        'city': cityController.text,
+                        'state': stateController.text,
+                        'country': countryController.text,
+                        'dob': dobController.text,
+                        'email': email,
+                        'mobile': joinedMobile,
+                        'address': address,
+                        'profile_pic_url': res['profile_pic_url'] ?? '',
+                      });
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Failed to update profile!')),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: gold,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    backgroundColor: accent,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: const Text("Save", style: TextStyle(color: Colors.white, fontSize: 17)),
+                  child: const Text("Save",
+                      style:
+                          TextStyle(color: Colors.white, fontSize: 17)),
                 ),
               ),
             ],
@@ -552,6 +811,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 }
+
+/// ===================== EDIT CONTACT INFO =====================
 
 class EditContactInfoScreen extends StatefulWidget {
   final String initialEmail;
@@ -566,7 +827,8 @@ class EditContactInfoScreen extends StatefulWidget {
   });
 
   @override
-  State<EditContactInfoScreen> createState() => _EditContactInfoScreenState();
+  State<EditContactInfoScreen> createState() =>
+      _EditContactInfoScreenState();
 }
 
 class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
@@ -577,10 +839,11 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
 
   @override
   void initState() {
-    emailController = TextEditingController(text: widget.initialEmail);
-    addressController = TextEditingController(text: widget.initialAddress);
-    mobile = widget.initialMobile;
     super.initState();
+    emailController = TextEditingController(text: widget.initialEmail);
+    addressController =
+        TextEditingController(text: widget.initialAddress);
+    mobile = widget.initialMobile;
   }
 
   @override
@@ -590,36 +853,53 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
     super.dispose();
   }
 
+  Widget _label(String s) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 5),
+        child: Text(
+          s,
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+      );
+
+  Widget _entry(
+    TextEditingController ctrl,
+    String hint, {
+    TextInputType keyboardType = TextInputType.text,
+  }) =>
+      TextField(
+        controller: ctrl,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF1F2937)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide:
+                const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFF6C646);
+    const bgColor = Color(0xFF020617);
+    const accent = Color(0xFF0EA5E9);
+
     return Scaffold(
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: const Text('Edit Contact Info', style: TextStyle(color: Colors.black)),
-        iconTheme: const IconThemeData(color: Colors.black),
+        backgroundColor: bgColor,
+        title: const Text('Edit Contact Info',
+            style: TextStyle(color: Colors.white)),
+        iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person_add_alt_1, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box_rounded, color: gold), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person, color: gold), label: ''),
-        ],
-        currentIndex: 3,
-        selectedItemColor: gold,
-        unselectedItemColor: gold,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        onTap: (i) {
-          if (i != 3) {
-            if (i == 0) Navigator.pushReplacementNamed(context, '/home');
-            if (i == 1) Navigator.pushReplacementNamed(context, '/invite');
-            if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
-            if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
-          }
-        },
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
@@ -628,19 +908,36 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _label("Email"),
-              _entry(emailController, 'Enter your email', keyboardType: TextInputType.emailAddress),
+              _entry(emailController, 'Enter your email',
+                  keyboardType: TextInputType.emailAddress),
               _label("Mobile Number"),
               IntlPhoneField(
                 decoration: InputDecoration(
                   labelText: 'Mobile',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: gold)),
+                  labelStyle:
+                      const TextStyle(color: Color(0xFF9CA3AF)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF1F2937)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide:
+                        const BorderSide(color: accent, width: 1.5),
+                  ),
                 ),
                 initialCountryCode: mobileCountryCode,
                 controller: TextEditingController(text: mobile),
+                style: const TextStyle(color: Colors.white),
+                dropdownTextStyle:
+                    const TextStyle(color: Colors.white),
                 onChanged: (phone) {
                   mobile = phone.number;
-                  mobileCountryCode = phone.countryISOCode ?? 'IN';
+                  mobileCountryCode =
+                      phone.countryISOCode ?? 'IN';
                 },
               ),
               _label("Address"),
@@ -651,7 +948,8 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
                 height: 48,
                 child: ElevatedButton(
                   onPressed: () {
-                    final joinedMobile = '+${mobileCountryCode} $mobile';
+                    final joinedMobile =
+                        '+$mobileCountryCode $mobile';
                     Navigator.pop(context, {
                       'email': emailController.text,
                       'mobile': joinedMobile,
@@ -659,10 +957,13 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: gold,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    backgroundColor: accent,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: const Text("Save", style: TextStyle(color: Colors.white, fontSize: 17)),
+                  child: const Text("Save",
+                      style:
+                          TextStyle(color: Colors.white, fontSize: 17)),
                 ),
               ),
             ],
@@ -671,30 +972,4 @@ class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
       ),
     );
   }
-
-  Widget _label(String s) => Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 5),
-        child: Text(s, style: const TextStyle(fontWeight: FontWeight.w600)),
-      );
-
-  Widget _entry(
-    TextEditingController ctrl,
-    String hint, {
-    TextInputType keyboardType = TextInputType.text,
-    bool readOnly = false,
-    Widget? suffixIcon,
-    VoidCallback? onTap,
-  }) =>
-      TextField(
-        controller: ctrl,
-        keyboardType: keyboardType,
-        readOnly: readOnly,
-        onTap: onTap,
-        decoration: InputDecoration(
-          hintText: hint,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          suffixIcon: suffixIcon,
-        ),
-      );
 }
-

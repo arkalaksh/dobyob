@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
-import 'create_post_screen.dart'; // याची फाईल lib/screens/ मध्ये असावी
+import 'create_post_screen.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -26,42 +26,50 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const bgColor = Color(0xFF020617);
+    const cardBg = Color(0xFF020617);
+    const borderColor = Color(0xFF1F2937);
+    const accent = Color(0xFF0EA5E9);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF6C646),
+        backgroundColor: bgColor,
         elevation: 0,
         automaticallyImplyLeading: false,
+        toolbarHeight: 70,
         titleSpacing: 0,
-        toolbarHeight: 60,
         title: Row(
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4, right: 10),
-              child: CircleAvatar(
-                radius: 22,
-                backgroundImage: NetworkImage(
-                  "https://randomuser.me/api/portraits/men/61.jpg",
-                ),
-              ),
+            const SizedBox(width: 8),
+            const CircleAvatar(
+              radius: 22,
+              backgroundColor: accent,
+              child: Icon(Icons.person, color: Colors.white, size: 26),
             ),
+            const SizedBox(width: 10),
             Expanded(
               child: Container(
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.yellow[100],
+                  color: const Color(0xFF020817),
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: borderColor),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.search, color: Colors.grey, size: 22),
-                    const SizedBox(width: 8),
-                    Expanded(
+                    const Icon(Icons.search,
+                        color: Color(0xFF6B7280), size: 20),
+                    const SizedBox(width: 6),
+                    const Expanded(
                       child: TextField(
-                        style: const TextStyle(fontSize: 16),
-                        decoration: const InputDecoration(
+                        style:
+                            TextStyle(fontSize: 14, color: Colors.white),
+                        decoration: InputDecoration(
                           hintText: 'Search',
+                          hintStyle:
+                              TextStyle(color: Color(0xFF6B7280)),
                           border: InputBorder.none,
                           isDense: true,
                         ),
@@ -76,27 +84,28 @@ class _FeedScreenState extends State<FeedScreen> {
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: const Color(0xFF020817),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home, color: Color(0xFFF6C646)),
+            icon: Icon(Icons.home),
             label: '',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_add_alt_1, color: Color(0xFFF6C646)),
+            icon: Icon(Icons.person_add_alt_1),
             label: '',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.add_box_rounded, color: Color(0xFFF6C646)),
+            icon: Icon(Icons.add_box_rounded),
             label: '',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person, color: Color(0xFFF6C646)),
+            icon: Icon(Icons.person),
             label: '',
           ),
         ],
         currentIndex: 0,
-        selectedItemColor: const Color(0xFFF6C646),
-        unselectedItemColor: const Color(0xFFF6C646),
+        selectedItemColor: accent,
+        unselectedItemColor: const Color(0xFF6B7280),
         showSelectedLabels: false,
         showUnselectedLabels: false,
         onTap: (i) async {
@@ -104,10 +113,10 @@ class _FeedScreenState extends State<FeedScreen> {
             Navigator.pushReplacementNamed(context, '/invite');
           }
           if (i == 2) {
-            // + आयकॉन क्लिक केल्यावर CreatePostScreen open करा आणि Successfully Posted झालं तर feed refresh करा
             final result = await Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+              MaterialPageRoute(
+                  builder: (_) => const CreatePostScreen()),
             );
             if (result == 'posted') {
               refreshPosts();
@@ -122,33 +131,35 @@ class _FeedScreenState extends State<FeedScreen> {
         future: postsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child:
+                  CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+            );
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No posts yet!"));
+            return const Center(
+              child: Text(
+                "No posts yet!",
+                style: TextStyle(color: Colors.white),
+              ),
+            );
           }
           final posts = snapshot.data!;
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: ListView.separated(
-              padding: const EdgeInsets.only(bottom: 90, top: 10),
+              padding: const EdgeInsets.only(bottom: 90, top: 8),
               itemCount: posts.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final post = posts[i];
-
                 return Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xfffff7d1),
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.amber, width: 1.7),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+                    border: Border.all(color: borderColor, width: 1.2),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(14),
@@ -156,9 +167,11 @@ class _FeedScreenState extends State<FeedScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.center,
                           children: [
-                            (post['profile_pic'] != null && post['profile_pic'] != "")
+                            (post['profile_pic'] != null &&
+                                    post['profile_pic'] != "")
                                 ? CircleAvatar(
                                     backgroundImage: NetworkImage(
                                       "https://arkalaksh.com/dobyob/${post['profile_pic']}",
@@ -167,35 +180,44 @@ class _FeedScreenState extends State<FeedScreen> {
                                   )
                                 : const CircleAvatar(
                                     radius: 22,
-                                    backgroundColor: Colors.black12,
-                                    child: Icon(Icons.person, color: Colors.grey),
+                                    backgroundColor: Color(0xFF111827),
+                                    child: Icon(Icons.person,
+                                        color: Colors.white),
                                   ),
                             const SizedBox(width: 10),
                             Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   post['full_name'] ?? "",
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: Colors.white,
                                   ),
                                 ),
                                 Text(
                                   "User ID: ${post['user_id']}",
                                   style: const TextStyle(
-                                      color: Colors.grey, fontSize: 12),
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
                             const Spacer(),
                             Text(
-                              post['created_at']?.substring(11,16) ?? '',
+                              post['created_at']?.substring(11, 16) ??
+                                  '',
                               style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey),
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                              ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.more_horiz, size: 22),
+                              icon: const Icon(Icons.more_horiz,
+                                  size: 22, color: Colors.white),
                               onPressed: () {},
                               splashRadius: 18,
                             ),
@@ -204,18 +226,41 @@ class _FeedScreenState extends State<FeedScreen> {
                         const SizedBox(height: 10),
                         Text(
                           post['content'] ?? '',
-                          style: const TextStyle(fontSize: 15),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.white,
+                          ),
                         ),
-                        if (post['image_url'] != null && post['image_url'] != "null")
+                        if (post['image_url'] != null &&
+                            post['image_url'] != "null" &&
+                            post['image_url'] != "")
                           Container(
-                            margin: const EdgeInsets.symmetric(vertical: 12),
-                            height: 160,
+                            margin:
+                                const EdgeInsets.symmetric(vertical: 12),
                             width: double.infinity,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(10),
-                              image: DecorationImage(
-                                image: NetworkImage(post['image_url']),
-                                fit: BoxFit.cover,
+                              color: const Color(0xFF020817),
+                              border: Border.all(color: borderColor),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(
+                                post['image_url'],
+                                fit: BoxFit.contain,
+                                loadingBuilder:
+                                    (context, child, progress) {
+                                  if (progress == null) return child;
+                                  return SizedBox(
+                                    height: 180,
+                                    child: Center(
+                                      child:
+                                          CircularProgressIndicator(
+                                        color: accent,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -225,7 +270,8 @@ class _FeedScreenState extends State<FeedScreen> {
                               "${post['likes_count']} Likes",
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 15,
+                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -233,7 +279,8 @@ class _FeedScreenState extends State<FeedScreen> {
                               "${post['comments_count']} Comments",
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 15,
+                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
                           ],

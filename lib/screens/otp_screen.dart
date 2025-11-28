@@ -26,7 +26,8 @@ class OtpScreen extends StatefulWidget {
 class _OtpScreenState extends State<OtpScreen> {
   final List<TextEditingController> _controllers =
       List.generate(6, (index) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
+  final List<FocusNode> _focusNodes =
+      List.generate(6, (index) => FocusNode());
 
   final ApiService apiService = ApiService();
 
@@ -82,44 +83,40 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Widget _buildOtpBox(int index) {
     bool isFocused = _focusNodes[index].hasFocus;
-    return Container(
+    return SizedBox(
       width: 44,
       height: 54,
-      margin: const EdgeInsets.symmetric(horizontal: 5),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: isFocused ? Colors.orange : Colors.deepPurple.shade200,
-          width: isFocused ? 2.2 : 1.3,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF020617),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: isFocused
+                ? const Color(0xFF0EA5E9)
+                : const Color(0xFF1F2937),
+            width: isFocused ? 2.0 : 1.3,
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+        child: Center(
+          child: TextField(
+            controller: _controllers[index],
+            focusNode: _focusNodes[index],
+            maxLength: 1,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 22,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            ),
+            decoration: const InputDecoration(
+              counterText: '',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (value) => _onOtpChanged(index, value),
           ),
-        ],
-      ),
-      child: Center(
-        child: TextField(
-          controller: _controllers[index],
-          focusNode: _focusNodes[index],
-          maxLength: 1,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 25,
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-          ),
-          decoration: const InputDecoration(
-            counterText: '',
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(vertical: 6),
-          ),
-          onChanged: (value) => _onOtpChanged(index, value),
         ),
       ),
     );
@@ -127,98 +124,119 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
+    const bgColor = Color(0xFF020617);
+    const circleColor = Color(0xFF0EA5E9);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: SizedBox(
-          width: double.infinity,
-          height: mq.size.height,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 18),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 32),
-                  CircleAvatar(
-                    backgroundColor: Colors.yellow[700],
-                    radius: 38,
-                    child: const Icon(Icons.verified_user, size: 38, color: Colors.white),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'OTP Verification',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 23,
-                      color: Color(0xFF1D1C61),
+                  const SizedBox(height: 8),
+
+                  // Header
+                  Center(
+                    child: Column(
+                      children: const [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: circleColor,
+                          child: Icon(Icons.verified_user,
+                              color: Colors.white, size: 26),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'Verify Account',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Enter the 6‑digit code sent to your email',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Enter the verification code we just sent your email address',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 15, color: Colors.grey[700]),
-                  ),
-                  const SizedBox(height: 34),
+
+                  const SizedBox(height: 28),
+
+                  // OTP boxes – wrapped in Row with even spacing and no outer margin
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: List.generate(6, _buildOtpBox),
                   ),
+
                   const SizedBox(height: 18),
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
-                        "If you don't get the code. ",
-                        style: TextStyle(fontSize: 13),
+                        "Didn't get the code? ",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFFD1D5DB),
+                        ),
                       ),
                       TextButton(
-                        onPressed: () {}, // TODO: resend OTP add here
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                        onPressed: () {
+                          // TODO: resend OTP
+                        },
+                        style:
+                            TextButton.styleFrom(padding: EdgeInsets.zero),
                         child: const Text(
-                          'Resend Now',
-                          style: TextStyle(color: Colors.red, fontSize: 13),
+                          'Resend now',
+                          style: TextStyle(
+                            color: Color(0xFF0EA5E9),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      )
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow[700],
-                      minimumSize: const Size(double.infinity, 48),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(9),
+
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: circleColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: _confirmOtp,
+                      child: const Text(
+                        'Confirm OTP',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    onPressed: _confirmOtp,
-                    child: const Text(
-                      'Confirm OTP',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 28),
-                  const Text(
-                    "Or Sign up with",
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.facebook, color: Colors.blue, size: 30),
-                      SizedBox(width: 18),
-                      Icon(Icons.alternate_email, color: Colors.lightBlue, size: 28),
-                    ],
-                  ),
+
                   const SizedBox(height: 10),
                 ],
               ),

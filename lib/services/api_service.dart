@@ -10,7 +10,7 @@ class ApiService {
     required String email,
   }) async {
     final url = Uri.parse('$baseUrl/verify_email.php');
-    final body = { "email": email };
+    final body = {"email": email};
     try {
       final response = await http.post(
         url,
@@ -26,17 +26,17 @@ class ApiService {
         };
       }
     } catch (e) {
-      return { "success": false, "message": "Error: $e" };
+      return {"success": false, "message": "Error: $e"};
     }
   }
 
-  // 2. Login (Verify OTP for login, only email + otp): verify_otp.php
+  // 2. Login (Verify OTP for login)
   Future<Map<String, dynamic>> verifyLoginOtp({
     required String email,
     required String otp,
   }) async {
     final url = Uri.parse('$baseUrl/verify_otp.php');
-    final body = { "email": email, "otp": otp };
+    final body = {"email": email, "otp": otp};
     try {
       final response = await http.post(
         url,
@@ -52,7 +52,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      return { "success": false, "message": "Error: $e" };
+      return {"success": false, "message": "Error: $e"};
     }
   }
 
@@ -85,7 +85,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      return { "success": false, "message": "Error: $e" };
+      return {"success": false, "message": "Error: $e"};
     }
   }
 
@@ -124,7 +124,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      return { "success": false, "message": "Error: $e" };
+      return {"success": false, "message": "Error: $e"};
     }
   }
 
@@ -157,7 +157,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      return { "success": false, "message": "Error: $e" };
+      return {"success": false, "message": "Error: $e"};
     }
   }
 
@@ -170,7 +170,6 @@ class ApiService {
         headers: {"Content-Type": "application/json"},
       );
       if (response.statusCode == 200) {
-        // API returns a List<Map<String, dynamic>>
         final List<dynamic> data = json.decode(response.body);
         return data.cast<Map<String, dynamic>>();
       } else {
@@ -180,4 +179,94 @@ class ApiService {
       return [];
     }
   }
+
+  // 7. Profile Update: profile_update.php
+  Future<Map<String, dynamic>> updateProfile({
+    required String userId,
+    required String fullName,
+    required String business,
+    required String profession,
+    required String industry,
+    required String dateOfBirth,
+    required String email,
+    required String phone,
+    required String address,
+    required String city,
+    required String state,
+    required String country,
+    required List<String> educationList,
+    required List<String> positionsList,
+    File? profilePic,
+  }) async {
+    final url = Uri.parse('$baseUrl/profile_update.php');
+    var request = http.MultipartRequest('POST', url);
+
+    request.fields['user_id'] = userId;
+    request.fields['full_name'] = fullName;
+    request.fields['business'] = business;
+    request.fields['profession'] = profession;
+    request.fields['industry'] = industry;
+    request.fields['date_of_birth'] = dateOfBirth;
+    request.fields['email'] = email;
+    request.fields['phone'] = phone;
+    request.fields['address'] = address;
+    request.fields['city'] = city;
+    request.fields['state'] = state;
+    request.fields['country'] = country;
+    request.fields['education'] = jsonEncode(educationList);
+    request.fields['positions'] = jsonEncode(positionsList);
+
+    if (profilePic != null) {
+      request.files.add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+    }
+
+    try {
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // 8. Get Profile: profile_get.php
+  Future<Map<String, dynamic>?> getProfile(String userId) async {
+    final url = Uri.parse('$baseUrl/profile_get.php?user_id=$userId');
+    try {
+      final response = await http.get(url, headers: {"Content-Type": "application/json"});
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["user"] != null) {
+          return decoded["user"];
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+  
+  // Upload ONLY profile image for a user. Returns the URL.
+  Future<Map<String, dynamic>> uploadProfileImage({
+    required String userId,
+    required File imageFile,
+  }) async {
+    final uri = Uri.parse('https://arkalaksh.com/dobyob/upload_profile_pic.php'); // Your PHP API URL
+    final req = http.MultipartRequest('POST', uri);
+    req.fields['user_id'] = userId;
+    req.files.add(await http.MultipartFile.fromPath('profile_pic', imageFile.path));
+
+    final resp = await req.send();
+    final respStr = await resp.stream.bytesToString();
+    return resp.statusCode == 200
+        ? Map<String, dynamic>.from(jsonDecode(respStr))
+        : {"success": false, "error": "HTTP ${resp.statusCode}"};
+  }
 }
+
