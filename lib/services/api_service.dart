@@ -141,7 +141,8 @@ class ApiService {
     request.fields['content'] = content;
 
     if (profilePic != null) {
-      request.files.add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+      request.files
+          .add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
     }
 
     try {
@@ -217,7 +218,8 @@ class ApiService {
     request.fields['positions'] = jsonEncode(positionsList);
 
     if (profilePic != null) {
-      request.files.add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+      request.files
+          .add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
     }
 
     try {
@@ -241,7 +243,8 @@ class ApiService {
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     final url = Uri.parse('$baseUrl/profile_get.php?user_id=$userId');
     try {
-      final response = await http.get(url, headers: {"Content-Type": "application/json"});
+      final response =
+          await http.get(url, headers: {"Content-Type": "application/json"});
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         if (decoded["success"] == true && decoded["user"] != null) {
@@ -251,16 +254,17 @@ class ApiService {
     } catch (e) {}
     return null;
   }
-  
+
   // Upload ONLY profile image for a user. Returns the URL.
   Future<Map<String, dynamic>> uploadProfileImage({
     required String userId,
     required File imageFile,
   }) async {
-    final uri = Uri.parse('https://arkalaksh.com/dobyob/upload_profile_pic.php'); // Your PHP API URL
+    final uri = Uri.parse('$baseUrl/upload_profile_pic.php');
     final req = http.MultipartRequest('POST', uri);
     req.fields['user_id'] = userId;
-    req.files.add(await http.MultipartFile.fromPath('profile_pic', imageFile.path));
+    req.files
+        .add(await http.MultipartFile.fromPath('profile_pic', imageFile.path));
 
     final resp = await req.send();
     final respStr = await resp.stream.bytesToString();
@@ -268,5 +272,36 @@ class ApiService {
         ? Map<String, dynamic>.from(jsonDecode(respStr))
         : {"success": false, "error": "HTTP ${resp.statusCode}"};
   }
-}
 
+  // 9. Invite friend: invite_friend.php
+  Future<Map<String, dynamic>> inviteFriend({
+    required String userId,
+    required String friendName,
+    required String friendEmail,
+  }) async {
+    final url = Uri.parse('$baseUrl/invite_friend.php');
+    final body = {
+      "user_id": int.parse(userId),
+      "friend_name": friendName,
+      "friend_email": friendEmail,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+}

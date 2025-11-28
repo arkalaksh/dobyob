@@ -1,3 +1,4 @@
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
 
@@ -62,7 +63,28 @@ class _OtpScreenState extends State<OtpScreen> {
     );
 
     if (response['success'] == true) {
-      Navigator.pushReplacementNamed(context, '/home');
+      // Backend कडून user data
+      final data = response['user'] ?? response;
+      final int userId = int.parse(data['user_id'].toString());
+      final String name = data['full_name'] ?? widget.fullName;
+      final String email = data['email'] ?? widget.email;
+      final String phone = data['phone'] ?? widget.phone;
+      const String deviceToken = '';
+      const String deviceType = 'android';
+
+      final session = await DobYobSessionManager.getInstance();
+      await session.saveUserSession(
+        userId: userId,
+        name: name,
+        email: email,
+        phone: phone,
+        deviceToken: deviceToken,
+        deviceType: deviceType,
+        profilePicture: data['profile_pic'],
+      );
+
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(response['message'] ?? 'Invalid OTP')),
@@ -141,8 +163,6 @@ class _OtpScreenState extends State<OtpScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 8),
-
-                  // Header
                   Center(
                     child: Column(
                       children: const [
@@ -173,17 +193,12 @@ class _OtpScreenState extends State<OtpScreen> {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
-                  // OTP boxes – wrapped in Row with even spacing and no outer margin
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: List.generate(6, _buildOtpBox),
                   ),
-
                   const SizedBox(height: 18),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -198,8 +213,7 @@ class _OtpScreenState extends State<OtpScreen> {
                         onPressed: () {
                           // TODO: resend OTP
                         },
-                        style:
-                            TextButton.styleFrom(padding: EdgeInsets.zero),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
                         child: const Text(
                           'Resend now',
                           style: TextStyle(
@@ -211,9 +225,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 24),
-
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -236,7 +248,6 @@ class _OtpScreenState extends State<OtpScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 10),
                 ],
               ),

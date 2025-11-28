@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -85,6 +86,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Text _infoText(String t) =>
       Text(t, style: const TextStyle(fontSize: 15, color: Colors.white));
 
+  Future<void> _logout() async {
+    final session = await DobYobSessionManager.getInstance();
+    await session.clearSession();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+  }
+
   @override
   Widget build(BuildContext context) {
     const bgColor = Color(0xFF020617);
@@ -150,14 +158,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
+                    // top-right settings + logout row
                     Positioned(
                       right: 16,
-                      top: 16,
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: const Color(0xFF020817),
-                        child: const Icon(Icons.settings,
-                            color: Colors.white, size: 18),
+                      top: 10,
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: _logout,
+                            child: const Text(
+                              'Logout',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: const Color(0xFF020817),
+                            child: const Icon(Icons.settings,
+                                color: Colors.white, size: 18),
+                          ),
+                        ],
                       ),
                     ),
                   ],

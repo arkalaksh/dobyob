@@ -1,3 +1,4 @@
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/widgets/social_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
@@ -45,6 +46,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         otpFieldVisible = true;
       });
+      // पहिल्या OTP box वर focus
+      otpFocusNodes.first.requestFocus();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(res['message'] ?? 'OTP sent to your email')),
       );
@@ -73,7 +77,27 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = false);
 
     if (res['success'] == true) {
-      Navigator.pushReplacementNamed(context, '/home');
+      final data = res['user'] ?? res;
+      final int userId = int.parse(data['user_id'].toString());
+      final String name = data['full_name'] ?? '';
+      final String email = data['email'] ?? emailController.text.trim();
+      final String phone = data['phone'] ?? '';
+      const String deviceToken = '';
+      const String deviceType = 'android';
+
+      final session = await DobYobSessionManager.getInstance();
+      await session.saveUserSession(
+        userId: userId,
+        name: name,
+        email: email,
+        phone: phone,
+        deviceToken: deviceToken,
+        deviceType: deviceType,
+        profilePicture: data['profile_pic'],
+      );
+
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(res['message'] ?? 'OTP verification failed')),
@@ -139,7 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
             constraints: const BoxConstraints(maxWidth: 420),
             child: Column(
               children: [
-                // Top step text
                 Padding(
                   padding:
                       const EdgeInsets.only(left: 20, right: 20, top: 10),
@@ -155,8 +178,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-
-                // Scrollable content
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
@@ -164,7 +185,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Header
                         Center(
                           child: Column(
                             children: const [
@@ -194,10 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 56),
-
-                        // Email field
                         const Text(
                           'Email address',
                           style: TextStyle(
@@ -209,6 +226,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 4),
                         TextField(
                           controller: emailController,
+                          readOnly: otpFieldVisible,
+                          enableInteractiveSelection: !otpFieldVisible,
                           style: const TextStyle(color: Colors.white),
                           cursorColor: const Color(0xFF38BDF8),
                           decoration: InputDecoration(
@@ -236,10 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
-                        // OTP section
                         if (otpFieldVisible) ...[
                           const Text(
                             'OTP',
@@ -263,8 +279,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ] else ...[
                           const SizedBox(height: 4),
                         ],
-
-                        // Main button
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
@@ -278,9 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             onPressed: isLoading
                                 ? null
-                                : (otpFieldVisible
-                                    ? _verifyOtp
-                                    : _sendOtp),
+                                : (otpFieldVisible ? _verifyOtp : _sendOtp),
                             child: isLoading
                                 ? const SizedBox(
                                     width: 20,
@@ -302,10 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
-                        // Signup link
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -330,10 +339,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-
                         const SizedBox(height: 40),
-
-                        // Social buttons only when OTP not visible
                         if (!otpFieldVisible) ...[
                           const Center(
                             child: Text(

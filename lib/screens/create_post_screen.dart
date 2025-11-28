@@ -45,7 +45,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     setState(() => isLoading = false);
 
     if (result['success'] == true) {
-      Navigator.pop(context, 'posted');
+      // true परत पाठव -> feed screen ला कळेल की refresh करायचं आहे
+      Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'] ?? "Failed to post")),
@@ -88,7 +89,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // User avatar and visibility
                 Row(
                   children: [
                     const CircleAvatar(
@@ -119,8 +119,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   ],
                 ),
                 const SizedBox(height: 15),
-
-                // Post text field
                 TextField(
                   controller: contentController,
                   minLines: 4,
@@ -136,7 +134,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ),
                 ),
-
                 if (selectedFile != null) ...[
                   const SizedBox(height: 10),
                   isImage
@@ -171,9 +168,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           ),
                         ),
                 ],
-
                 const Spacer(),
-
                 Row(
                   children: [
                     IconButton(
@@ -204,13 +199,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 74),
               ],
             ),
           ),
-
-          // Bottom Post button
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(

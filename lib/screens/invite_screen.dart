@@ -1,23 +1,124 @@
+import 'package:dobyob_1/services/api_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-class InviteScreen extends StatelessWidget {
+class InviteScreen extends StatefulWidget {
   const InviteScreen({super.key});
 
   @override
+  State<InviteScreen> createState() => _InviteScreenState();
+}
+
+class _InviteScreenState extends State<InviteScreen> {
+  static const bgColor = Color(0xFF020617);
+  static const cardColor = Color(0xFF020817);
+  static const borderColor = Color(0xFF1F2937);
+  static const accent = Color(0xFF0EA5E9);
+
+  final ApiService apiService = ApiService();
+  final TextEditingController searchController = TextEditingController();
+
+  final List<Map<String, String>> allContacts = [];
+  List<Map<String, String>> filteredContacts = [];
+
+  bool isSending = false;
+  bool isLoadingContacts = true;
+  String userId = "5"; // TODO: actual logged‑in user id
+
+  @override
+  void initState() {
+    super.initState();
+    searchController.addListener(_onSearchChanged);
+    _loadDeviceContacts();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDeviceContacts() async {
+    // permission
+    final status = await Permission.contacts.request();
+    if (!status.isGranted) {
+      if (!mounted) return;
+      setState(() {
+        isLoadingContacts = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contacts permission denied')),
+      );
+      return;
+    }
+
+    // fetch contacts with properties (emails)
+    final contacts =
+        await FlutterContacts.getContacts(withProperties: true);
+
+    final List<Map<String, String>> mapped = [];
+    for (final c in contacts) {
+      if (c.emails.isEmpty) continue; // invite साठी email हवा
+      final name = c.displayName;
+      for (final e in c.emails) {
+        final email = e.address;
+        if (email.isEmpty) continue;
+        mapped.add({'name': name, 'email': email});
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      allContacts
+        ..clear()
+        ..addAll(mapped);
+      filteredContacts = List<Map<String, String>>.from(allContacts);
+      isLoadingContacts = false;
+    });
+  }
+
+  void _onSearchChanged() {
+    final q = searchController.text.toLowerCase();
+    setState(() {
+      if (q.isEmpty) {
+        filteredContacts = List<Map<String, String>>.from(allContacts);
+      } else {
+        filteredContacts = allContacts
+            .where((c) =>
+                (c['name'] ?? '').toLowerCase().contains(q) ||
+                (c['email'] ?? '').toLowerCase().contains(q))
+            .toList();
+      }
+    });
+  }
+
+  Future<void> _sendInvite(Map<String, String> contact) async {
+    final email = contact['email'] ?? '';
+    final name = contact['name'] ?? '';
+    if (email.isEmpty) return;
+
+    setState(() => isSending = true);
+
+    final res = await apiService.inviteFriend(
+      userId: userId,
+      friendName: name,
+      friendEmail: email,
+    );
+
+    setState(() => isSending = false);
+
+    final msg = res['message'] ??
+        (res['success'] == true ? 'Invite sent' : 'Failed to send invite');
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    const bgColor = Color(0xFF020617);
-    const cardColor = Color(0xFF020817);
-    const borderColor = Color(0xFF1F2937);
-    const accent = Color(0xFF0EA5E9);
-
-    final contacts = [
-      {"name": "Alice Smith", "email": "alice@gmail.com"},
-      {"name": "Bob Wilson", "email": "bob12@gmail.com"},
-      {"name": "David Brown", "email": "db123@gmail.com"},
-      {"name": "John Rk", "email": "john@gmail.com"},
-      {"name": "Henry Taylor", "email": "taylor@gmail.com"},
-    ];
-
     return Scaffold(
       backgroundColor: bgColor,
       resizeToAvoidBottomInset: true,
@@ -95,6 +196,7 @@ class InviteScreen extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: TextField(
+                    controller: searchController,
                     style: const TextStyle(color: Colors.white),
                     cursorColor: accent,
                     decoration: InputDecoration(
@@ -127,73 +229,100 @@ class InviteScreen extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    itemCount: contacts.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
-                      final contact = contacts[i];
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: borderColor,
-                            width: 1,
+                  child: isLoadingContacts
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: accent,
                           ),
-                        ),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            radius: 22,
-                            backgroundColor: accent,
-                            child: Icon(Icons.person,
-                                color: Colors.white, size: 22),
-                          ),
-                          title: Text(
-                            contact['name']!,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          subtitle: Text(
-                            contact['email']!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          trailing: SizedBox(
-                            height: 32,
-                            width: 76,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: accent,
-                                elevation: 0,
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              onPressed: () {
-                                // TODO: send invite
-                              },
-                              child: const Text(
-                                "Invite",
+                        )
+                      : filteredContacts.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No contacts to show',
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF6B7280),
                                   fontSize: 13,
                                 ),
                               ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              itemCount: filteredContacts.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (context, i) {
+                                final contact = filteredContacts[i];
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: cardColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: borderColor,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    leading: const CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: accent,
+                                      child: Icon(Icons.person,
+                                          color: Colors.white, size: 22),
+                                    ),
+                                    title: Text(
+                                      contact['name'] ?? '',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      contact['email'] ?? '',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF9CA3AF),
+                                      ),
+                                    ),
+                                    trailing: SizedBox(
+                                      height: 32,
+                                      width: 76,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: accent,
+                                          elevation: 0,
+                                          padding: EdgeInsets.zero,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onPressed: isSending
+                                            ? null
+                                            : () => _sendInvite(contact),
+                                        child: isSending
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Text(
+                                                "Invite",
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),

@@ -1,39 +1,45 @@
 import 'package:dobyob_1/screens/create_post_screen.dart';
 import 'package:dobyob_1/screens/dobyob_intro_screen.dart';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/invite_screen.dart';
+import 'package:dobyob_1/screens/login_screen.dart';
+import 'package:dobyob_1/screens/signup_screen.dart';
+import 'package:dobyob_1/screens/feed_screen.dart';
+import 'package:dobyob_1/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
-import 'screens/signup_screen.dart';
-import 'screens/feed_screen.dart';
-import 'screens/profile_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final session = await DobYobSessionManager.getInstance();
+  final bool isLoggedIn = await session.isLoggedIn();
+
+  runApp(MyApp(isLoggedIn: isLoggedIn));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  const MyApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'DobYob',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.yellow,
         fontFamily: 'Montserrat',
       ),
-      // App सुरू होताना सगळ्यात आधी Intro स्क्रीन दिसेल
-      initialRoute: '/intro',
+      // जर लॉगिन असेल तर थेट home, नाही तर intro
+      initialRoute: isLoggedIn ? '/home' : '/intro',
       routes: {
         '/intro': (context) => const DobYobIntroScreen(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
-        '/home': (context) => const FeedScreen(),      // main feed/home
+        '/home': (context) => const FeedScreen(),
         '/addpost': (context) => const CreatePostScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/invite': (context) => const InviteScreen(),
-        // OTP स्क्रीनला named routeने जायचं असेल तर इथे पण add करू शकतोस
-        // '/otp': (context) => const OtpScreen(...),  // गरजेनुसार
       },
     );
   }
