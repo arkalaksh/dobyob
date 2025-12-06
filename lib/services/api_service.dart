@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'https://arkalaksh.com/dobyob';
+  static const String baseUrl = 'https://dobyob.arkalaksh.com';
 
   // 1. Login (Send OTP to Email): verify_email.php
   Future<Map<String, dynamic>> sendEmailOtp({
@@ -14,8 +14,8 @@ class ApiService {
     try {
       final response = await http.post(
         url,
-        headers: {"Content-Type": "application/json"},
-        body: json.encode(body),
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
       );
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -30,7 +30,7 @@ class ApiService {
     }
   }
 
-  // 2. Login (Verify OTP for login)
+  // 2. Login (Verify OTP for login): verify_otp.php
   Future<Map<String, dynamic>> verifyLoginOtp({
     required String email,
     required String otp,
@@ -63,7 +63,7 @@ class ApiService {
     required String dateOfBirth,
     required String phone,
   }) async {
-    final url = Uri.parse('$baseUrl/users.php');
+    final url = Uri.parse('$baseUrl/request_otp.php');
     final body = {
       "full_name": fullName,
       "email": email,
@@ -141,8 +141,9 @@ class ApiService {
     request.fields['content'] = content;
 
     if (profilePic != null) {
-      request.files
-          .add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+      request.files.add(
+        await http.MultipartFile.fromPath('profile_pic', profilePic.path),
+      );
     }
 
     try {
@@ -162,14 +163,11 @@ class ApiService {
     }
   }
 
-  // 6. Get Posts: get_posts.php (returns a List)
-  Future<List<Map<String, dynamic>>> getPosts() async {
-    final url = Uri.parse('$baseUrl/get_posts.php');
+  // 6. Get Posts: get_posts.php
+  Future<List<Map<String, dynamic>>> getPosts({required String userId}) async {
+    final url = Uri.parse('$baseUrl/get_posts.php?user_id=$userId');
     try {
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
+      final response = await http.get(url);
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.cast<Map<String, dynamic>>();
@@ -218,8 +216,9 @@ class ApiService {
     request.fields['positions'] = jsonEncode(positionsList);
 
     if (profilePic != null) {
-      request.files
-          .add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+      request.files.add(
+        await http.MultipartFile.fromPath('profile_pic', profilePic.path),
+      );
     }
 
     try {
@@ -255,7 +254,7 @@ class ApiService {
     return null;
   }
 
-  // Upload ONLY profile image for a user. Returns the URL.
+  // Upload ONLY profile image for a user.
   Future<Map<String, dynamic>> uploadProfileImage({
     required String userId,
     required File imageFile,
@@ -263,8 +262,9 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/upload_profile_pic.php');
     final req = http.MultipartRequest('POST', uri);
     req.fields['user_id'] = userId;
-    req.files
-        .add(await http.MultipartFile.fromPath('profile_pic', imageFile.path));
+    req.files.add(
+      await http.MultipartFile.fromPath('profile_pic', imageFile.path),
+    );
 
     final resp = await req.send();
     final respStr = await resp.stream.bytesToString();
@@ -303,5 +303,297 @@ class ApiService {
     } catch (e) {
       return {"success": false, "message": "Error: $e"};
     }
+  }
+
+  // 10. Toggle like: toggle_like.php
+  Future<Map<String, dynamic>> toggleLike({
+    required String postId,
+    required String userId,
+  }) async {
+    final url = Uri.parse('$baseUrl/toggle_like.php');
+    final body = {
+      "post_id": int.parse(postId),
+      "user_id": int.parse(userId),
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // 11. Get post likes list: get_post_likes.php
+  Future<List<Map<String, dynamic>>> getPostLikes(String postId) async {
+    final url = Uri.parse('$baseUrl/get_post_likes.php?post_id=$postId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["likes"] is List) {
+          return (decoded["likes"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  // 12. Add comment: add_comment.php
+  Future<Map<String, dynamic>> addComment({
+    required String postId,
+    required String userId,
+    required String content,
+  }) async {
+    final url = Uri.parse('$baseUrl/add_comment.php');
+    final body = {
+      "post_id": int.parse(postId),
+      "user_id": int.parse(userId),
+      "content": content,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // 13. Get comments list: get_comments.php
+  Future<List<Map<String, dynamic>>> getComments(String postId) async {
+    final url = Uri.parse('$baseUrl/get_comments.php?post_id=$postId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["comments"] is List) {
+          return (decoded["comments"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  // ================= CONNECTIONS / NETWORK APIs =================
+
+  // A. Send connection request: send_request.php
+  Future<Map<String, dynamic>> sendConnectionRequest({
+    required String senderId,
+    required String receiverId,
+  }) async {
+    final url = Uri.parse('$baseUrl/send_request.php');
+    final body = {
+      "sender_id": senderId,
+      "receiver_id": receiverId,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // B. People suggestions: people_suggestions.php
+  Future<List<Map<String, dynamic>>> getPeopleSuggestions(String userId) async {
+    final url = Uri.parse('$baseUrl/people_suggestions.php?user_id=$userId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["data"] is List) {
+          return (decoded["data"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  // C. My connections: my_connections.php
+  Future<List<Map<String, dynamic>>> getMyConnections(String userId) async {
+    final url = Uri.parse('$baseUrl/my_connections.php?user_id=$userId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["data"] is List) {
+          return (decoded["data"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  // D. Pending requests list: connection_requests.php
+  Future<List<Map<String, dynamic>>> getConnectionRequests(String userId) async {
+    final url = Uri.parse('$baseUrl/connection_requests.php?user_id=$userId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["data"] is List) {
+          return (decoded["data"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  // E. Respond to request (accept / reject): respond_request.php
+  Future<Map<String, dynamic>> respondToRequest({
+    required String connectionId,
+    required String action, // "accept" / "reject"
+  }) async {
+    final url = Uri.parse('$baseUrl/respond_request.php');
+    final body = {
+      "connection_id": int.parse(connectionId),
+      "action": action,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // ================= NEW: SEARCH + PROFILE (LinkedIn style) =================
+
+  // F. Search users: search_users.php
+  Future<List<Map<String, dynamic>>> searchUsers({
+    required String currentUserId,
+    required String query,
+  }) async {
+    final url = Uri.parse('$baseUrl/search_users.php');
+    final body = {
+      "user_id": int.parse(currentUserId),
+      "query": query,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["users"] is List) {
+          return (decoded["users"] as List)
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {}
+    return [];
+  }
+Future<Map<String, dynamic>?> logout({required String userId}) async {
+  try {
+    final response = await http.get(
+      Uri.parse('https://dobyob.arkalaksh.com/api/logout.php?user_id=$userId'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+  // G. Get other user's profile: user_profile.php
+  Future<Map<String, dynamic>?> getUserProfile({
+    required String userId,   // profile owner id
+    required String viewerId, // logged‑in user id
+  }) async {
+    final url =
+        Uri.parse('$baseUrl/user_profile.php?user_id=$userId&viewer_id=$viewerId');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        if (decoded["success"] == true && decoded["user"] != null) {
+          return Map<String, dynamic>.from(decoded["user"]);
+        }
+      }
+    } catch (e) {}
+    return null;
   }
 }

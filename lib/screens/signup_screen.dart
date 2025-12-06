@@ -18,6 +18,56 @@ class _SignupScreenState extends State<SignupScreen> {
 
   final ApiService apiService = ApiService();
 
+  // ---------- validation helpers ----------
+
+  // Email MUST be valid and MUST end with .com
+  bool _isValidEmail(String email) {
+    final trimmed = email.trim();
+    // basic email + .com at end
+    final reg = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$',
+    );
+    return reg.hasMatch(trimmed);
+  }
+
+  // Name: 3–25 chars, letters + spaces only
+  bool _isValidName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.length < 3 || trimmed.length > 25) return false;
+    return RegExp(r'^[a-zA-Z ]+$').hasMatch(trimmed);
+  }
+
+  // DOB string "dd/MM/yyyy" -> DateTime? (null if invalid)
+  DateTime? _parseDob(String dob) {
+    try {
+      final parts = dob.split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+      return DateTime(year, month, day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Age check: user must be at least 16 years (birth year <= 2009 approx)
+  bool _isValidAge(String dob) {
+    final date = _parseDob(dob);
+    if (date == null) return false;
+
+    // exact 16 years check
+    final now = DateTime.now();
+    int age = now.year - date.year;
+    if (now.month < date.month ||
+        (now.month == date.month && now.day < date.day)) {
+      age--;
+    }
+    return age >= 16;
+  }
+
+  // ----------------------------------------
+
   String getApiDate(String localDate) {
     final parts = localDate.split('/');
     if (parts.length == 3) {
@@ -27,42 +77,86 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _sendOtp() async {
-    if (fullNameController.text.isEmpty ||
-        emailController.text.isEmpty ||
-        dobController.text.isEmpty ||
-        phoneController.text.isEmpty) {
+    final name = fullNameController.text;
+    final email = emailController.text;
+    final dob = dobController.text;
+    final phone = phoneController.text;
+
+    if (name.isEmpty || email.isEmpty || dob.isEmpty || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all fields')),
       );
       return;
     }
 
+    // Name validation (3–25 chars, only letters + space)
+    if (!_isValidName(name)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Name must be 3–25 letters (A–Z) only'),
+        ),
+      );
+      return;
+    }
+
+    // Email validation (.com and valid pattern)
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid .com email address'),
+        ),
+      );
+      return;
+    }
+
+    // DOB format + age >= 16 check
+    final parsedDob = _parseDob(dob);
+    if (parsedDob == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter DOB in dd/mm/yyyy format'),
+        ),
+      );
+      return;
+    }
+
+    if (!_isValidAge(dob)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be at least 16 years old to create account'),
+        ),
+      );
+      return;
+    }
+
     final response = await apiService.sendOtp(
-      fullName: fullNameController.text.trim(),
-      email: emailController.text.trim(),
-      dateOfBirth: getApiDate(dobController.text.trim()),
-      phone: phoneController.text.trim(),
+      fullName: name.trim(),
+      email: email.trim(),
+      dateOfBirth: getApiDate(dob.trim()),
+      phone: phone.trim(),
     );
 
     if (response['success'] == true) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => OtpScreen(
-            email: emailController.text.trim(),
-            fullName: fullNameController.text.trim(),
-            dateOfBirth: getApiDate(dobController.text.trim()),
-            phone: phoneController.text.trim(),
-            deviceToken: "",
-            deviceType: "",
-          ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response['message'] ?? 'Failed to send OTP')),
-      );
-    }
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(
+      builder: (context) => OtpScreen(
+        email: email.trim(),
+        fullName: name.trim(),
+        dateOfBirth: getApiDate(dob.trim()),
+        phone: phone.trim(),
+        deviceToken: "",
+        deviceType: "",
+      ),
+    ),
+  );
+} else {
+  final msg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(msg)),
+  );
+}
+
   }
 
   @override
@@ -127,15 +221,16 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: fullNameController,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
+                maxLength: 25, // hard limit
                 decoration: InputDecoration(
+                  counterText: '', // hide counter
                   hintText: 'Enter your full name',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   filled: true,
                   fillColor: fieldColor,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF1F2937)),
+                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -167,15 +262,15 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: emailController,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
+                keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: 'Enter your email',
+                  hintText: 'Enter your email (.com only)',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   filled: true,
                   fillColor: fieldColor,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF1F2937)),
+                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -205,7 +300,7 @@ class _SignupScreenState extends State<SignupScreen> {
               const SizedBox(height: 4),
               TextField(
                 controller: dobController,
-                readOnly: false, // manual typing allowed
+                readOnly: false,
                 keyboardType: TextInputType.datetime,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
@@ -235,8 +330,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   fillColor: fieldColor,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF1F2937)),
+                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -268,8 +362,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: phoneController,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
-                dropdownTextStyle:
-                    const TextStyle(color: Colors.white),
+                dropdownTextStyle: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Phone Number',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
@@ -277,8 +370,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   fillColor: fieldColor,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF1F2937)),
+                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -313,8 +405,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   onPressed: _sendOtp,
                   child: const Text(

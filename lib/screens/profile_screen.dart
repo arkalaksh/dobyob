@@ -1,45 +1,50 @@
-import 'dart:io';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
-import 'package:dobyob_1/services/api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
-import 'package:image_picker/image_picker.dart';
-
-/// ===================== PROFILE SCREEN =====================
+import 'package:dobyob_1/services/api_service.dart';
+import 'package:dobyob_1/widgets/main_bottom_nav.dart';
+import 'package:intl/intl.dart';
+import 'edit_profile_screen.dart';
+import 'connections_screen.dart'; // NEW import
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String userId = "5"; // TODO: Replace with actual userId
-
+  String userId = "";
+  String userDob = "";
   String userName = "";
   String userBusiness = "";
   String userProfession = "";
   String userIndustry = "";
-  String userEducation = "";
   String userCity = "";
   String userState = "";
   String userCountry = "";
-  String userDob = "";
   String userEmail = "";
   String userMobile = "";
-  String userAddress = "";
   String userProfilePicUrl = "";
+  int connectionsCount = 0; // NEW
 
-  List<String> userPositions = <String>[];
-  List<String> userEducationList = <String>[];
-
-  ApiService apiService = ApiService();
+  final ApiService apiService = ApiService();
   bool isLoading = false;
+
+  static const String _imageBase = 'https://dobyob.arkalaksh.com/';
 
   @override
   void initState() {
     super.initState();
-    loadProfile();
+    _initAndLoad();
+  }
+
+  Future<void> _initAndLoad() async {
+    final session = await DobYobSessionManager.getInstance();
+    final uidInt = await session.getUserId();
+    if (uidInt == null) return;
+    userId = uidInt.toString();
+    await loadProfile();
   }
 
   Future<void> loadProfile() async {
@@ -48,50 +53,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       isLoading = false;
       if (user != null) {
-        userName = user['full_name'] ?? "";
+        userName = user['full_name'] ?? user['name'] ?? "";
         userBusiness = user['business'] ?? "";
         userProfession = user['profession'] ?? "";
         userIndustry = user['industry'] ?? "";
-        userEducation = user['education'] ?? "";
-        userProfilePicUrl = user['profile_pic'] ?? "";
-
-        userEducationList = userEducation.isNotEmpty
-            ? userEducation
-                .split(',')
-                .map<String>((e) => e.toString().trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-            : <String>[];
-
-        final String positionsRaw = user['positions'] ?? "";
-        userPositions = positionsRaw.isNotEmpty
-            ? positionsRaw
-                .split(',')
-                .map<String>((e) => e.toString().trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-            : <String>[];
-
         userCity = user['city'] ?? "";
         userState = user['state'] ?? "";
         userCountry = user['country'] ?? "";
-        userDob = user['date_of_birth'] ?? "";
         userEmail = user['email'] ?? "";
         userMobile = user['phone'] ?? "";
-        userAddress = user['address'] ?? "";
+        userDob = user['date_of_birth'] ?? "";
+        // total connections from API (if available)
+        connectionsCount = int.tryParse(user['connections_count']?.toString() ?? '0') ?? 0;
+
+        final rawPic = (user['profile_pic'] ?? "").toString();
+        if (rawPic.isEmpty) {
+          userProfilePicUrl = "";
+        } else if (rawPic.startsWith('http')) {
+          userProfilePicUrl = rawPic;
+        } else {
+          userProfilePicUrl = '$_imageBase$rawPic';
+        }
       }
     });
   }
-
-  Text _infoText(String t) =>
-      Text(t, style: const TextStyle(fontSize: 15, color: Colors.white));
-
+String get dobLabel {
+  if (userDob.isEmpty) return "";
+  try {
+    final d = DateTime.parse(userDob); // yyyy-MM-dd from your API
+    return DateFormat('dd/MM/yyyy').format(d);
+  } catch (_) {
+    return userDob;
+  }
+}
   Future<void> _logout() async {
+  try {
+    final session = await DobYobSessionManager.getInstance();
+    final uidInt = await session.getUserId();
+    
+    if (uidInt != null) {
+      // Call logout API
+      final response = await apiService.logout(userId: uidInt.toString());
+      
+      if (response?['success'] == true) {
+        // Clear local session
+        await session.clearSession();
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+      } else {
+        // API failed but still clear local session
+        await session.clearSession();
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+      }
+    } else {
+      // No user ID, just clear session
+      await session.clearSession();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+    }
+  } catch (e) {
+    // Network error, still clear local session
     final session = await DobYobSessionManager.getInstance();
     await session.clearSession();
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -100,35 +128,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const borderColor = Color(0xFF1F2937);
     const accent = Color(0xFF0EA5E9);
 
+    final location = [
+      if (userCity.isNotEmpty) userCity,
+      if (userState.isNotEmpty) userState,
+      if (userCountry.isNotEmpty) userCountry,
+    ].join(", ");
+
+    // display string like "500+ connections"
+    final connectionsLabel = connectionsCount > 500
+        ? "500+ connections"
+        : "$connectionsCount connections";
+
     return Scaffold(
       backgroundColor: bgColor,
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF020817),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person_add_alt_1), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.add_box_rounded), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
-        ],
-        currentIndex: 3,
-        selectedItemColor: accent,
-        unselectedItemColor: const Color(0xFF6B7280),
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        onTap: (i) {
-          if (i != 3) {
-            if (i == 0) Navigator.pushReplacementNamed(context, '/home');
-            if (i == 1) Navigator.pushReplacementNamed(context, '/invite');
-            if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
-          }
-        },
+      appBar: AppBar(
+        backgroundColor: bgColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            Navigator.pushNamed(context, '/home');
+          },
+        ),
+        title: const Text(
+          "Profile",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: false,
       ),
+      bottomNavigationBar: const MainBottomNav(currentIndex: 3),
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: accent),
-            )
+          ? const Center(child: CircularProgressIndicator(color: accent))
           : ListView(
               children: [
+                // header + profile image
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -147,9 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           radius: 43,
                           backgroundColor: const Color(0xFF020817),
                           backgroundImage: (userProfilePicUrl.isNotEmpty)
-                              ? NetworkImage(
-                                  'https://arkalaksh.com/dobyob/$userProfilePicUrl',
-                                )
+                              ? NetworkImage(userProfilePicUrl)
                               : null,
                           child: (userProfilePicUrl.isEmpty)
                               ? const Icon(Icons.person,
@@ -158,37 +193,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
-                    // top-right settings + logout row
                     Positioned(
                       right: 16,
                       top: 10,
-                      child: Row(
-                        children: [
-                          TextButton(
-                            onPressed: _logout,
-                            child: const Text(
-                              'Logout',
-                              style: TextStyle(
-                                color: Colors.redAccent,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                      child: TextButton(
+                        onPressed: _logout,
+                        child: const Text(
+                          'Logout',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(width: 4),
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: const Color(0xFF020817),
-                            child: const Icon(Icons.settings,
-                                color: Colors.white, size: 18),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 42),
+
+                // main card
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Card(
                     color: cardColor,
                     shape: RoundedRectangleBorder(
@@ -197,164 +222,146 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     elevation: 0,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 20),
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // name + edit
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                userName.isEmpty ? "Profile" : userName,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      userName.isEmpty ? "Your Name" : userName,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height:6),
+                                     if (dobLabel.isNotEmpty)
+  Text(
+    "DOB: $dobLabel",
+    style: const TextStyle(fontSize: 12, color: Colors.white70),
+  ),
+                                    const SizedBox(height: 6),
+                                    if (userBusiness.isNotEmpty)
+                                      Text(
+                                        userBusiness,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    if (userProfession.isNotEmpty)
+                                      Text(
+                                        userProfession,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    if (userIndustry.isNotEmpty)
+                                      Text(
+                                        userIndustry,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    if (location.isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        location,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white60,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 6),
+                                    if (userEmail.isNotEmpty)
+                                      Text(
+                                        "Email: $userEmail",
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    if (userMobile.isNotEmpty)
+                                      Text(
+                                        "Mobile: $userMobile",
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
-                              const Spacer(),
                               IconButton(
                                 icon: const Icon(Icons.edit,
                                     color: accent, size: 22),
                                 onPressed: () async {
-                                  final result = await Navigator.push(
+                                  final changed = await Navigator.push<bool>(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => EditProfileScreen(
+                                      builder: (_) => EditProfileScreen(
                                         userId: userId,
                                         initialName: userName,
                                         initialBusiness: userBusiness,
                                         initialProfession: userProfession,
                                         initialIndustry: userIndustry,
-                                        initialEducation: userEducation,
-                                        initialEducationList:
-                                            List<String>.from(
-                                                userEducationList),
-                                        initialPositions:
-                                            List<String>.from(userPositions),
                                         initialCity: userCity,
                                         initialState: userState,
                                         initialCountry: userCountry,
                                         initialDob: userDob,
                                         initialEmail: userEmail,
                                         initialMobile: userMobile,
-                                        initialAddress: userAddress,
+                                        initialAddress: '',
+                                        initialEducation: '',
+                                        initialEducationList: const [],
+                                        initialPositions: const [],
                                         initialProfilePicUrl:
                                             userProfilePicUrl,
                                       ),
                                     ),
                                   );
-
-                                  if (result != null &&
-                                      result is Map<String, dynamic>) {
-                                    setState(() {
-                                      userName =
-                                          result['name'] ?? userName;
-                                      userBusiness =
-                                          result['business'] ??
-                                              userBusiness;
-                                      userProfession =
-                                          result['profession'] ??
-                                              userProfession;
-                                      userIndustry =
-                                          result['industry'] ??
-                                              userIndustry;
-                                      userEducation =
-                                          result['education'] ??
-                                              userEducation;
-                                      userEducationList =
-                                          (result['educationList']
-                                                      as List?)
-                                                  ?.cast<String>() ??
-                                              userEducationList;
-                                      userPositions =
-                                          (result['positions'] as List?)
-                                                  ?.cast<String>() ??
-                                              userPositions;
-                                      userCity =
-                                          result['city'] ?? userCity;
-                                      userState =
-                                          result['state'] ?? userState;
-                                      userCountry =
-                                          result['country'] ??
-                                              userCountry;
-                                      userDob =
-                                          result['dob'] ?? userDob;
-                                      userEmail =
-                                          result['email'] ?? userEmail;
-                                      userMobile =
-                                          result['mobile'] ?? userMobile;
-                                      userAddress =
-                                          result['address'] ??
-                                              userAddress;
-                                      userProfilePicUrl =
-                                          result['profile_pic_url'] ??
-                                              userProfilePicUrl;
-                                    });
+                                  if (changed == true) {
+                                    await loadProfile();
                                   }
                                 },
                               ),
                             ],
                           ),
-                          const Divider(height: 28, color: borderColor),
-                          if (userBusiness.isNotEmpty)
-                            _infoText("Business: $userBusiness"),
-                          if (userIndustry.isNotEmpty)
-                            _infoText("Industry: $userIndustry"),
-                          if (userProfession.isNotEmpty)
-                            _infoText("Profession: $userProfession"),
-                          if (userEducationList.isNotEmpty)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Education:",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
+
+                          const SizedBox(height: 16),
+
+                          // CLICKABLE "500+ connections"
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ConnectionsScreen(
+                                    userId: userId,
                                   ),
                                 ),
-                                ...userEducationList
-                                    .map((edu) => _infoText(edu))
-                                    .toList(),
-                              ],
-                            )
-                          else if (userEducation.isNotEmpty)
-                            _infoText("Education: $userEducation"),
-                          if (userPositions.isNotEmpty)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 8),
-                                const Text(
-                                  "Positions:",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                ...userPositions
-                                    .map((pos) => _infoText(pos))
-                                    .toList(),
-                              ],
+                              );
+                            },
+                            child: Text(
+                              connectionsLabel,
+                              style: const TextStyle(
+                                color: Color(0xFF0EA5E9),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                             ),
-                          if (userCity.isNotEmpty)
-                            _infoText("City: $userCity"),
-                          if (userState.isNotEmpty)
-                            _infoText("State: $userState"),
-                          if (userCountry.isNotEmpty)
-                            _infoText("Country: $userCountry"),
-                          const Divider(height: 18, color: borderColor),
-                          if (userEmail.isNotEmpty)
-                            _infoText("Email: $userEmail"),
-                          if (userMobile.isNotEmpty)
-                            _infoText("Mobile: $userMobile"),
-                          if (userAddress.isNotEmpty)
-                            _infoText("Address: $userAddress"),
-                          if (userDob.isNotEmpty)
-                            _infoText("DOB: $userDob"),
+                          ),
                         ],
                       ),
                     ),
@@ -362,638 +369,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-/// ===================== EDIT PROFILE SCREEN =====================
-
-class EditProfileScreen extends StatefulWidget {
-  final String userId;
-  final String initialName;
-  final String initialBusiness;
-  final String initialProfession;
-  final String initialIndustry;
-  final String initialEducation;
-  final List<String> initialEducationList;
-  final List<String> initialPositions;
-  final String initialCity;
-  final String initialState;
-  final String initialCountry;
-  final String initialDob;
-  final String initialEmail;
-  final String initialMobile;
-  final String initialAddress;
-  final String initialProfilePicUrl;
-
-  const EditProfileScreen({
-    super.key,
-    required this.userId,
-    required this.initialName,
-    required this.initialBusiness,
-    required this.initialProfession,
-    required this.initialIndustry,
-    required this.initialEducation,
-    required this.initialEducationList,
-    required this.initialPositions,
-    required this.initialCity,
-    required this.initialState,
-    required this.initialCountry,
-    required this.initialDob,
-    required this.initialEmail,
-    required this.initialMobile,
-    required this.initialAddress,
-    required this.initialProfilePicUrl,
-  });
-
-  @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
-}
-
-class _EditProfileScreenState extends State<EditProfileScreen> {
-  late TextEditingController nameController;
-  late TextEditingController businessController;
-  late TextEditingController professionController;
-  late TextEditingController industryController;
-  late TextEditingController educationController;
-  late TextEditingController cityController;
-  late TextEditingController stateController;
-  late TextEditingController countryController;
-  late TextEditingController dobController;
-
-  String email = '';
-  String mobile = '';
-  String mobileCountryCode = 'IN';
-  String address = '';
-
-  File? selectedProfilePic;
-  String profilePicUrl = '';
-
-  List<TextEditingController> positionControllers = [];
-  List<TextEditingController> educationControllers = [];
-  ApiService apiService = ApiService();
-
-  @override
-  void initState() {
-    super.initState();
-    nameController = TextEditingController(text: widget.initialName);
-    businessController =
-        TextEditingController(text: widget.initialBusiness);
-    professionController =
-        TextEditingController(text: widget.initialProfession);
-    industryController =
-        TextEditingController(text: widget.initialIndustry);
-    educationController =
-        TextEditingController(text: widget.initialEducation);
-    cityController = TextEditingController(text: widget.initialCity);
-    stateController = TextEditingController(text: widget.initialState);
-    countryController =
-        TextEditingController(text: widget.initialCountry);
-    dobController = TextEditingController(text: widget.initialDob);
-
-    email = widget.initialEmail;
-    mobile = widget.initialMobile.replaceAll(RegExp('[^0-9]'), '');
-    address = widget.initialAddress;
-
-    profilePicUrl = widget.initialProfilePicUrl;
-
-    educationControllers = widget.initialEducationList.isNotEmpty
-        ? widget.initialEducationList
-            .map<TextEditingController>(
-                (e) => TextEditingController(text: e))
-            .toList()
-        : <TextEditingController>[TextEditingController()];
-
-    positionControllers = widget.initialPositions.isNotEmpty
-        ? widget.initialPositions
-            .map<TextEditingController>(
-                (p) => TextEditingController(text: p))
-            .toList()
-        : <TextEditingController>[TextEditingController()];
-  }
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    businessController.dispose();
-    professionController.dispose();
-    industryController.dispose();
-    educationController.dispose();
-    cityController.dispose();
-    stateController.dispose();
-    countryController.dispose();
-    dobController.dispose();
-    for (var c in positionControllers) {
-      c.dispose();
-    }
-    for (var c in educationControllers) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> pickProfilePic() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      setState(() {
-        selectedProfilePic = File(picked.path);
-        profilePicUrl = "";
-      });
-    }
-  }
-
-  void updateContactInfoFromEdit(Map<String, dynamic> result) {
-    setState(() {
-      email = result['email'];
-      mobile = result['mobile'].replaceAll(RegExp('[^0-9]'), '');
-      address = result['address'];
-    });
-  }
-
-  Widget _label(String s) => Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 5),
-        child: Text(
-          s,
-          style: const TextStyle(
-              fontWeight: FontWeight.w600, color: Colors.white),
-        ),
-      );
-
-  Widget _entry(
-    TextEditingController ctrl,
-    String hint, {
-    TextInputType keyboardType = TextInputType.text,
-    bool readOnly = false,
-    Widget? suffixIcon,
-    VoidCallback? onTap,
-  }) =>
-      TextField(
-        controller: ctrl,
-        keyboardType: keyboardType,
-        readOnly: readOnly,
-        onTap: onTap,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF1F2937)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide:
-                const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
-          ),
-          suffixIcon: suffixIcon,
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    const bgColor = Color(0xFF020617);
-    const accent = Color(0xFF0EA5E9);
-
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        backgroundColor: bgColor,
-        title: const Text('Edit Profile',
-            style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: GestureDetector(
-                  onTap: pickProfilePic,
-                  child: CircleAvatar(
-                    radius: 52,
-                    backgroundColor: const Color(0xFF111827),
-                    child: selectedProfilePic != null
-                        ? ClipOval(
-                            child: Image.file(
-                              selectedProfilePic!,
-                              width: 96,
-                              height: 96,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : (profilePicUrl.isNotEmpty
-                            ? ClipOval(
-                                child: Image.network(
-                                'https://arkalaksh.com/dobyob/$profilePicUrl',
-                                width: 96,
-                                height: 96,
-                                fit: BoxFit.cover,
-                              ))
-                            : const Icon(Icons.camera_alt,
-                                size: 40, color: Colors.white)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              _label("Full Name"),
-              _entry(nameController, 'Enter your name'),
-              _label("Business Info"),
-              _entry(businessController, 'Tell us about your business'),
-              _label("Industry / Professional Field"),
-              _entry(industryController,
-                  'Enter your industry or professional field'),
-              _label("Profession"),
-              _entry(professionController, 'Enter your profession'),
-              _label("Positions"),
-              ...positionControllers.asMap().entries.map((entry) {
-                int idx = entry.key;
-                TextEditingController controller = entry.value;
-                return Row(
-                  children: [
-                    Expanded(
-                        child: _entry(
-                            controller, "Enter position details")),
-                    IconButton(
-                      icon:
-                          const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          if (positionControllers.length > 1) {
-                            positionControllers.removeAt(idx);
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                );
-              }).toList(),
-              TextButton.icon(
-                icon: const Icon(Icons.add, color: accent),
-                label: const Text("Add New Position",
-                    style: TextStyle(color: accent)),
-                onPressed: () {
-                  setState(() {
-                    positionControllers.add(TextEditingController());
-                  });
-                },
-              ),
-              _label("Education"),
-              ...educationControllers.asMap().entries.map((entry) {
-                int idx = entry.key;
-                TextEditingController controller = entry.value;
-                return Row(
-                  children: [
-                    Expanded(
-                        child:
-                            _entry(controller, "Enter education details")),
-                    IconButton(
-                      icon:
-                          const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () {
-                        setState(() {
-                          if (educationControllers.length > 1) {
-                            educationControllers.removeAt(idx);
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                );
-              }).toList(),
-              TextButton.icon(
-                icon: const Icon(Icons.add, color: accent),
-                label: const Text("Add New Education",
-                    style: TextStyle(color: accent)),
-                onPressed: () {
-                  setState(() {
-                    educationControllers.add(TextEditingController());
-                  });
-                },
-              ),
-              _label("City"),
-              _entry(cityController, 'Enter your city'),
-              _label("State"),
-              _entry(stateController, 'Enter your state'),
-              _label("Country"),
-              _entry(countryController, 'Enter your country'),
-              _label("DOB"),
-              _entry(
-                dobController,
-                'Select DOB',
-                readOnly: true,
-                suffixIcon:
-                    const Icon(Icons.calendar_today, color: accent),
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now()
-                        .subtract(const Duration(days: 365 * 20)),
-                    firstDate: DateTime(1900),
-                    lastDate: DateTime.now(),
-                  );
-                  if (picked != null) {
-                    dobController.text =
-                        "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-                  }
-                },
-              ),
-              const SizedBox(height: 32),
-              GestureDetector(
-                child: Card(
-                  color: const Color(0xFF0B1120),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 12, horizontal: 10),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.contact_mail,
-                            color: Colors.white, size: 21),
-                        SizedBox(width: 8),
-                        Text('Contact Info',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                        Spacer(),
-                        Icon(Icons.arrow_forward_ios,
-                            size: 16, color: Color(0xFF6B7280)),
-                      ],
-                    ),
-                  ),
-                ),
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditContactInfoScreen(
-                        initialEmail: email,
-                        initialMobile: mobile,
-                        initialAddress: address,
-                      ),
-                    ),
-                  );
-                  if (result != null) {
-                    updateContactInfoFromEdit(
-                        result as Map<String, dynamic>);
-                  }
-                },
-              ),
-              if (address.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(left: 8, right: 8, top: 14),
-                  child: Text("Address: $address",
-                      style: const TextStyle(
-                          fontSize: 15, color: Colors.white)),
-                ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    final joinedMobile = '+91 $mobile';
-                    List<String> positions = positionControllers
-                        .map((c) => c.text)
-                        .where((e) => e.isNotEmpty)
-                        .toList();
-                    List<String> educationList = educationControllers
-                        .map((c) => c.text)
-                        .where((e) => e.isNotEmpty)
-                        .toList();
-
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (_) =>
-                          const Center(child: CircularProgressIndicator()),
-                    );
-
-                    final res = await apiService.updateProfile(
-                      userId: widget.userId,
-                      fullName: nameController.text,
-                      business: businessController.text,
-                      profession: professionController.text,
-                      industry: industryController.text,
-                      dateOfBirth: dobController.text,
-                      email: email,
-                      phone: joinedMobile,
-                      address: address,
-                      city: cityController.text,
-                      state: stateController.text,
-                      country: countryController.text,
-                      educationList: educationList,
-                      positionsList: positions,
-                      profilePic: selectedProfilePic,
-                    );
-
-                    Navigator.of(context, rootNavigator: true).pop();
-
-                    if (res['success'] == true) {
-                      Navigator.pop(context, {
-                        'name': nameController.text,
-                        'business': businessController.text,
-                        'profession': professionController.text,
-                        'industry': industryController.text,
-                        'education': educationController.text,
-                        'educationList': educationList,
-                        'positions': positions,
-                        'city': cityController.text,
-                        'state': stateController.text,
-                        'country': countryController.text,
-                        'dob': dobController.text,
-                        'email': email,
-                        'mobile': joinedMobile,
-                        'address': address,
-                        'profile_pic_url': res['profile_pic_url'] ?? '',
-                      });
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Failed to update profile!')),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text("Save",
-                      style:
-                          TextStyle(color: Colors.white, fontSize: 17)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ===================== EDIT CONTACT INFO =====================
-
-class EditContactInfoScreen extends StatefulWidget {
-  final String initialEmail;
-  final String initialMobile;
-  final String initialAddress;
-
-  const EditContactInfoScreen({
-    super.key,
-    required this.initialEmail,
-    required this.initialMobile,
-    required this.initialAddress,
-  });
-
-  @override
-  State<EditContactInfoScreen> createState() =>
-      _EditContactInfoScreenState();
-}
-
-class _EditContactInfoScreenState extends State<EditContactInfoScreen> {
-  late TextEditingController emailController;
-  late TextEditingController addressController;
-  String mobile = '';
-  String mobileCountryCode = 'IN';
-
-  @override
-  void initState() {
-    super.initState();
-    emailController = TextEditingController(text: widget.initialEmail);
-    addressController =
-        TextEditingController(text: widget.initialAddress);
-    mobile = widget.initialMobile;
-  }
-
-  @override
-  void dispose() {
-    emailController.dispose();
-    addressController.dispose();
-    super.dispose();
-  }
-
-  Widget _label(String s) => Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 5),
-        child: Text(
-          s,
-          style: const TextStyle(
-              fontWeight: FontWeight.w600, color: Colors.white),
-        ),
-      );
-
-  Widget _entry(
-    TextEditingController ctrl,
-    String hint, {
-    TextInputType keyboardType = TextInputType.text,
-  }) =>
-      TextField(
-        controller: ctrl,
-        keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF1F2937)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide:
-                const BorderSide(color: Color(0xFF0EA5E9), width: 1.5),
-          ),
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    const bgColor = Color(0xFF020617);
-    const accent = Color(0xFF0EA5E9);
-
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        backgroundColor: bgColor,
-        title: const Text('Edit Contact Info',
-            style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _label("Email"),
-              _entry(emailController, 'Enter your email',
-                  keyboardType: TextInputType.emailAddress),
-              _label("Mobile Number"),
-              IntlPhoneField(
-                decoration: InputDecoration(
-                  labelText: 'Mobile',
-                  labelStyle:
-                      const TextStyle(color: Color(0xFF9CA3AF)),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide:
-                        const BorderSide(color: Color(0xFF1F2937)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide:
-                        const BorderSide(color: accent, width: 1.5),
-                  ),
-                ),
-                initialCountryCode: mobileCountryCode,
-                controller: TextEditingController(text: mobile),
-                style: const TextStyle(color: Colors.white),
-                dropdownTextStyle:
-                    const TextStyle(color: Colors.white),
-                onChanged: (phone) {
-                  mobile = phone.number;
-                  mobileCountryCode =
-                      phone.countryISOCode ?? 'IN';
-                },
-              ),
-              _label("Address"),
-              _entry(addressController, 'Enter your address'),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    final joinedMobile =
-                        '+$mobileCountryCode $mobile';
-                    Navigator.pop(context, {
-                      'email': emailController.text,
-                      'mobile': joinedMobile,
-                      'address': addressController.text,
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text("Save",
-                      style:
-                          TextStyle(color: Colors.white, fontSize: 17)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

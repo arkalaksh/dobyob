@@ -19,6 +19,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool otpFieldVisible = false;
   bool isLoading = false;
 
+  // Email MUST be valid and MUST end with .com
+  bool _isValidEmail(String email) {
+    final trimmed = email.trim();
+    final reg = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$',
+    );
+    return reg.hasMatch(trimmed);
+  }
+
   void _onOtpChanged(int index, String value) {
     if (value.length == 1 && index < 5) {
       otpFocusNodes[index + 1].requestFocus();
@@ -30,23 +39,31 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _sendOtp() async {
-    if (emailController.text.isEmpty) {
+    final email = emailController.text.trim();
+
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your email')),
       );
       return;
     }
+
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter a valid .com email address')),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
-    final res = await apiService.sendEmailOtp(
-      email: emailController.text.trim(),
-    );
+    final res = await apiService.sendEmailOtp(email: email);
     setState(() => isLoading = false);
 
     if (res['success'] == true) {
       setState(() {
         otpFieldVisible = true;
       });
-      // पहिल्या OTP box वर focus
       otpFocusNodes.first.requestFocus();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -60,27 +77,37 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _verifyOtp() async {
-    String otp = otpControllers.map((c) => c.text).join();
+    final email = emailController.text.trim();
+
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter a valid .com email address')),
+      );
+      return;
+    }
+
+    final otp = otpControllers.map((c) => c.text).join();
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter the 6 digit OTP')),
       );
       return;
     }
-    setState(() => isLoading = true);
 
+    setState(() => isLoading = true);
     final res = await apiService.verifyLoginOtp(
-      email: emailController.text.trim(),
+      email: email,
       otp: otp,
     );
-
     setState(() => isLoading = false);
 
     if (res['success'] == true) {
       final data = res['user'] ?? res;
       final int userId = int.parse(data['user_id'].toString());
-      final String name = data['full_name'] ?? '';
-      final String email = data['email'] ?? emailController.text.trim();
+      final String name =
+          (data['full_name'] ?? data['name'] ?? '').toString();
+      final String userEmail = data['email'] ?? email;
       final String phone = data['phone'] ?? '';
       const String deviceToken = '';
       const String deviceType = 'android';
@@ -89,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await session.saveUserSession(
         userId: userId,
         name: name,
-        email: email,
+        email: userEmail,
         phone: phone,
         deviceToken: deviceToken,
         deviceType: deviceType,
@@ -230,6 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           enableInteractiveSelection: !otpFieldVisible,
                           style: const TextStyle(color: Colors.white),
                           cursorColor: const Color(0xFF38BDF8),
+                          keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             hintText: 'Enter your email',
                             hintStyle: const TextStyle(

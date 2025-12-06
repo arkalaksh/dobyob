@@ -1,7 +1,9 @@
 import 'package:dobyob_1/services/api_service.dart';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:dobyob_1/widgets/main_bottom_nav.dart';
 
 class InviteScreen extends StatefulWidget {
   const InviteScreen({super.key});
@@ -24,13 +26,28 @@ class _InviteScreenState extends State<InviteScreen> {
 
   bool isSending = false;
   bool isLoadingContacts = true;
-  String userId = "5"; // TODO: actual logged‑in user id
+  String userId = "";
 
   @override
   void initState() {
     super.initState();
     searchController.addListener(_onSearchChanged);
-    _loadDeviceContacts();
+    _initUserAndContacts();
+  }
+
+  Future<void> _initUserAndContacts() async {
+    final session = await DobYobSessionManager.getInstance();
+    final uidInt = await session.getUserId();
+    if (!mounted || uidInt == null) {
+      setState(() => isLoadingContacts = false);
+      return;
+    }
+
+    setState(() {
+      userId = uidInt.toString();
+    });
+
+    await _loadDeviceContacts();
   }
 
   @override
@@ -40,32 +57,58 @@ class _InviteScreenState extends State<InviteScreen> {
   }
 
   Future<void> _loadDeviceContacts() async {
-    // permission
-    final status = await Permission.contacts.request();
-    if (!status.isGranted) {
+    final status = await Permission.contacts.status;
+
+    if (status.isPermanentlyDenied) {
       if (!mounted) return;
-      setState(() {
-        isLoadingContacts = false;
-      });
+      setState(() => isLoadingContacts = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Contacts permission denied')),
+        const SnackBar(
+          content: Text(
+            'Contacts permission is permanently denied. Please enable it from Settings.',
+          ),
+        ),
       );
+      await openAppSettings();
       return;
     }
 
-    // fetch contacts with properties (emails)
-    final contacts =
-        await FlutterContacts.getContacts(withProperties: true);
+    if (!status.isGranted) {
+      final req = await Permission.contacts.request();
+      if (!req.isGranted) {
+        if (!mounted) return;
+        setState(() => isLoadingContacts = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contacts permission denied')),
+        );
+        return;
+      }
+    }
+
+    final contacts = await FlutterContacts.getContacts(withProperties: true);
 
     final List<Map<String, String>> mapped = [];
     for (final c in contacts) {
-      if (c.emails.isEmpty) continue; // invite साठी email हवा
       final name = c.displayName;
-      for (final e in c.emails) {
-        final email = e.address;
-        if (email.isEmpty) continue;
-        mapped.add({'name': name, 'email': email});
+
+      String contactValue = '';
+      String type = '';
+
+      if (c.emails.isNotEmpty) {
+        contactValue = c.emails.first.address;
+        type = 'email';
+      } else if (c.phones.isNotEmpty) {
+        contactValue = c.phones.first.number;
+        type = 'phone';
       }
+
+      if (contactValue.isEmpty) continue;
+
+      mapped.add({
+        'name': name,
+        'value': contactValue,
+        'type': type,
+      });
     }
 
     if (!mounted) return;
@@ -87,23 +130,26 @@ class _InviteScreenState extends State<InviteScreen> {
         filteredContacts = allContacts
             .where((c) =>
                 (c['name'] ?? '').toLowerCase().contains(q) ||
-                (c['email'] ?? '').toLowerCase().contains(q))
+                (c['value'] ?? '').toLowerCase().contains(q))
             .toList();
       }
     });
   }
 
   Future<void> _sendInvite(Map<String, String> contact) async {
-    final email = contact['email'] ?? '';
+    if (userId.isEmpty) return;
+
+    final value = contact['value'] ?? '';
     final name = contact['name'] ?? '';
-    if (email.isEmpty) return;
+    final type = contact['type'] ?? 'email';
+    if (value.isEmpty) return;
 
     setState(() => isSending = true);
 
     final res = await apiService.inviteFriend(
       userId: userId,
       friendName: name,
-      friendEmail: email,
+      friendEmail: value,
     );
 
     setState(() => isSending = false);
@@ -120,18 +166,24 @@ class _InviteScreenState extends State<InviteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+       bottomNavigationBar: const MainBottomNav(currentIndex: 1), // tab index
       backgroundColor: bgColor,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: bgColor,
         elevation: 0,
-        automaticallyImplyLeading: false,
         toolbarHeight: 60,
         titleSpacing: 0,
-        title: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            Navigator.pushNamed(context, '/home');
+          },
+        ),
+        title: const Padding(
+          padding: EdgeInsets.only(right: 20),
           child: Row(
-            children: const [
+            children: [
               CircleAvatar(
                 radius: 20,
                 backgroundColor: accent,
@@ -150,29 +202,6 @@ class _InviteScreenState extends State<InviteScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF020817),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_add_alt_1), label: ''),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.add_box_rounded), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
-        ],
-        currentIndex: 1,
-        selectedItemColor: accent,
-        unselectedItemColor: const Color(0xFF6B7280),
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        onTap: (i) {
-          if (i != 1) {
-            if (i == 0) Navigator.pushReplacementNamed(context, '/home');
-            if (i == 2) Navigator.pushReplacementNamed(context, '/addpost');
-            if (i == 3) Navigator.pushReplacementNamed(context, '/profile');
-          }
-        },
       ),
       body: SafeArea(
         child: Center(
@@ -204,8 +233,8 @@ class _InviteScreenState extends State<InviteScreen> {
                       hintStyle: const TextStyle(
                           fontSize: 14, color: Color(0xFF6B7280)),
                       isDense: true,
-                      prefixIcon: const Icon(Icons.search,
-                          color: accent, size: 20),
+                      prefixIcon:
+                          const Icon(Icons.search, color: accent, size: 20),
                       contentPadding:
                           const EdgeInsets.symmetric(vertical: 8),
                       filled: true,
@@ -253,6 +282,8 @@ class _InviteScreenState extends State<InviteScreen> {
                                   const SizedBox(height: 10),
                               itemBuilder: (context, i) {
                                 final contact = filteredContacts[i];
+                                final isEmail =
+                                    (contact['type'] ?? '') == 'email';
                                 return Container(
                                   decoration: BoxDecoration(
                                     color: cardColor,
@@ -277,7 +308,7 @@ class _InviteScreenState extends State<InviteScreen> {
                                       ),
                                     ),
                                     subtitle: Text(
-                                      contact['email'] ?? '',
+                                      contact['value'] ?? '',
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: Color(0xFF9CA3AF),
@@ -309,9 +340,9 @@ class _InviteScreenState extends State<InviteScreen> {
                                                   color: Colors.white,
                                                 ),
                                               )
-                                            : const Text(
-                                                "Invite",
-                                                style: TextStyle(
+                                            : Text(
+                                                isEmail ? "Invite" : "Share",
+                                                style: const TextStyle(
                                                   color: Colors.white,
                                                   fontWeight: FontWeight.w600,
                                                   fontSize: 13,

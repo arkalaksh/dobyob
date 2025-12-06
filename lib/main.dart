@@ -3,6 +3,7 @@ import 'package:dobyob_1/screens/dobyob_intro_screen.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/invite_screen.dart';
 import 'package:dobyob_1/screens/login_screen.dart';
+import 'package:dobyob_1/screens/my_network_screen.dart';
 import 'package:dobyob_1/screens/signup_screen.dart';
 import 'package:dobyob_1/screens/feed_screen.dart';
 import 'package:dobyob_1/screens/profile_screen.dart';
@@ -30,7 +31,6 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.yellow,
         fontFamily: 'Montserrat',
       ),
-      // जर लॉगिन असेल तर थेट home, नाही तर intro
       initialRoute: isLoggedIn ? '/home' : '/intro',
       routes: {
         '/intro': (context) => const DobYobIntroScreen(),
@@ -40,6 +40,8 @@ class MyApp extends StatelessWidget {
         '/addpost': (context) => const CreatePostScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/invite': (context) => const InviteScreen(),
+        '/network': (context) => const NetworkScreen(),
+
       },
     );
   }
