@@ -2,10 +2,13 @@ import 'package:dobyob_1/screens/otp_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:dobyob_1/services/api_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:io' show Platform;
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
-
+  final String fcmToken; // ← ADD THIS
+  const SignupScreen({super.key, required this.fcmToken}); // ← UPDATE THIS
+  
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
@@ -18,26 +21,27 @@ class _SignupScreenState extends State<SignupScreen> {
 
   final ApiService apiService = ApiService();
 
+  @override
+  void initState() {
+    super.initState();
+    // PRINT FCM TOKEN IN DEBUG CONSOLE
+    print('SignupScreen FCM Token: ${widget.fcmToken}');
+  }
+
   // ---------- validation helpers ----------
 
-  // Email MUST be valid and MUST end with .com
   bool _isValidEmail(String email) {
     final trimmed = email.trim();
-    // basic email + .com at end
-    final reg = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$',
-    );
+    final reg = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$');
     return reg.hasMatch(trimmed);
   }
 
-  // Name: 3–25 chars, letters + spaces only
   bool _isValidName(String name) {
     final trimmed = name.trim();
     if (trimmed.length < 3 || trimmed.length > 25) return false;
     return RegExp(r'^[a-zA-Z ]+$').hasMatch(trimmed);
   }
 
-  // DOB string "dd/MM/yyyy" -> DateTime? (null if invalid)
   DateTime? _parseDob(String dob) {
     try {
       final parts = dob.split('/');
@@ -51,12 +55,10 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  // Age check: user must be at least 16 years (birth year <= 2009 approx)
   bool _isValidAge(String dob) {
     final date = _parseDob(dob);
     if (date == null) return false;
 
-    // exact 16 years check
     final now = DateTime.now();
     int age = now.year - date.year;
     if (now.month < date.month ||
@@ -65,8 +67,6 @@ class _SignupScreenState extends State<SignupScreen> {
     }
     return age >= 16;
   }
-
-  // ----------------------------------------
 
   String getApiDate(String localDate) {
     final parts = localDate.split('/');
@@ -89,7 +89,6 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    // Name validation (3–25 chars, only letters + space)
     if (!_isValidName(name)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -99,7 +98,6 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    // Email validation (.com and valid pattern)
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -109,7 +107,6 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    // DOB format + age >= 16 check
     final parsedDob = _parseDob(dob);
     if (parsedDob == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -129,34 +126,52 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
+    // PASS FCM TOKEN TO API
     final response = await apiService.sendOtp(
       fullName: name.trim(),
       email: email.trim(),
       dateOfBirth: getApiDate(dob.trim()),
       phone: phone.trim(),
+      deviceToken: widget.fcmToken,  // ← ADD THIS
+      deviceType: Platform.isAndroid ? 'android' : 'ios',  // ← ADD THIS
     );
 
     if (response['success'] == true) {
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(
-      builder: (context) => OtpScreen(
-        email: email.trim(),
-        fullName: name.trim(),
-        dateOfBirth: getApiDate(dob.trim()),
-        phone: phone.trim(),
-        deviceToken: "",
-        deviceType: "",
-      ),
-    ),
-  );
-} else {
-  final msg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg)),
-  );
-}
-
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpScreen(
+            email: email.trim(),
+            fullName: name.trim(),
+            dateOfBirth: getApiDate(dob.trim()),
+            phone: phone.trim(),
+            deviceToken: widget.fcmToken,  // ← PASS TOKEN
+            deviceType: Platform.isAndroid ? 'android' : 'ios',  // ← PASS TYPE
+          ),
+        ),
+      );
+    } else {
+      final errorMsg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
+      
+      if (errorMsg.contains('already registered') || errorMsg.contains('Please log in')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Account already exists! Taking you to login...'),
+            backgroundColor: const Color.fromARGB(255, 11, 65, 88),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        Future.delayed(const Duration(seconds: 2), () {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          Navigator.pushReplacementNamed(context, '/login');
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg)),
+        );
+      }
+    }
   }
 
   @override
@@ -221,9 +236,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 controller: fullNameController,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
-                maxLength: 25, // hard limit
+                maxLength: 25,
                 decoration: InputDecoration(
-                  counterText: '', // hide counter
+                  counterText: '',
                   hintText: 'Enter your full name',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   filled: true,
@@ -288,7 +303,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 12),
 
-              // DOB (manual + calendar)
+              // DOB
               const Text(
                 'Date of Birth',
                 style: TextStyle(

@@ -8,9 +8,15 @@ class ApiService {
   // 1. Login (Send OTP to Email): verify_email.php
   Future<Map<String, dynamic>> sendEmailOtp({
     required String email,
+    String deviceToken = '',  // ADD THIS
+    String deviceType = '',   // ADD THIS
   }) async {
     final url = Uri.parse('$baseUrl/verify_email.php');
-    final body = {"email": email};
+    final body = {
+      "email": email,
+      "deviceToken": deviceToken,  // ADD THIS
+      "deviceType": deviceType,    // ADD THIS
+    };
     try {
       final response = await http.post(
         url,
@@ -30,13 +36,20 @@ class ApiService {
     }
   }
 
-  // 2. Login (Verify OTP for login): verify_otp.php
+  // 2. Login (Verify OTP for login): loginwithotp.php
   Future<Map<String, dynamic>> verifyLoginOtp({
     required String email,
     required String otp,
+    String deviceToken = '',  // ADD THIS
+    String deviceType = '',   // ADD THIS
   }) async {
-    final url = Uri.parse('$baseUrl/verify_otp.php');
-    final body = {"email": email, "otp": otp};
+    final url = Uri.parse('$baseUrl/loginwithotp.php');
+    final body = {
+      "email": email,
+      "otp": otp,
+      "deviceToken": deviceToken,  // ADD THIS
+      "deviceType": deviceType,    // ADD THIS
+    };
     try {
       final response = await http.post(
         url,
@@ -62,6 +75,8 @@ class ApiService {
     required String email,
     required String dateOfBirth,
     required String phone,
+    String deviceToken = '',  // ADD THIS
+    String deviceType = '',   // ADD THIS
   }) async {
     final url = Uri.parse('$baseUrl/request_otp.php');
     final body = {
@@ -69,6 +84,8 @@ class ApiService {
       "email": email,
       "date_of_birth": dateOfBirth,
       "phone": phone,
+      "deviceToken": deviceToken,  // ADD THIS
+      "deviceType": deviceType,    // ADD THIS
     };
     try {
       final response = await http.post(
@@ -241,16 +258,24 @@ class ApiService {
   // 8. Get Profile: profile_get.php
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     final url = Uri.parse('$baseUrl/profile_get.php?user_id=$userId');
+
     try {
-      final response =
-          await http.get(url, headers: {"Content-Type": "application/json"});
+      final response = await http.get(url);
+
+      print("STATUS: ${response.statusCode}");
+      print("BODY: ${response.body}");
+
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
+
         if (decoded["success"] == true && decoded["user"] != null) {
-          return decoded["user"];
+          return Map<String, dynamic>.from(decoded["user"]);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      print("ERROR: $e");
+    }
+
     return null;
   }
 
@@ -559,28 +584,29 @@ class ApiService {
     } catch (e) {}
     return [];
   }
-Future<Map<String, dynamic>?> logout({required String userId}) async {
-  try {
-    final response = await http.get(
-      Uri.parse('https://dobyob.arkalaksh.com/api/logout.php?user_id=$userId'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
+
+  Future<Map<String, dynamic>?> logout({required String userId}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://dobyob.arkalaksh.com/api/logout.php?user_id=$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
-    return null;
-  } catch (e) {
-    return null;
   }
-}
+
   // G. Get other user's profile: user_profile.php
   Future<Map<String, dynamic>?> getUserProfile({
     required String userId,   // profile owner id
     required String viewerId, // logged‑in user id
   }) async {
-    final url =
-        Uri.parse('$baseUrl/user_profile.php?user_id=$userId&viewer_id=$viewerId');
+    final url = Uri.parse('$baseUrl/user_profile.php?user_id=$userId&viewer_id=$viewerId');
 
     try {
       final response = await http.get(

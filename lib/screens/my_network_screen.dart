@@ -2,7 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/widgets/main_bottom_nav.dart';
-import 'package:dobyob_1/screens/other_profile_screen.dart'; // ✅ Added import
+import 'package:dobyob_1/screens/other_profile_screen.dart';
+
+extension StringTitleCase on String {
+  String toTitleCase() {
+    if (trim().isEmpty) return '';
+    return trim()
+        .split(RegExp(r'\s+'))
+        .map((word) =>
+            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+}
 
 class NetworkScreen extends StatefulWidget {
   const NetworkScreen({super.key});
@@ -65,7 +76,6 @@ class _NetworkScreenState extends State<NetworkScreen>
     });
   }
 
-  // ✅ NEW: Navigate to Other Profile Screen
   void _openProfileScreen(String userId) {
     Navigator.push(
       context,
@@ -98,8 +108,10 @@ class _NetworkScreenState extends State<NetworkScreen>
     required String connectionId,
     required String action,
   }) async {
-    final res =
-        await _api.respondToRequest(connectionId: connectionId, action: action);
+    final res = await _api.respondToRequest(
+      connectionId: connectionId,
+      action: action,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(res['message']?.toString() ?? '')),
@@ -127,19 +139,16 @@ class _NetworkScreenState extends State<NetworkScreen>
         toolbarHeight: 80,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pushReplacementNamed(context, '/home');
-          },
+          onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
         ),
         titleSpacing: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title row
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
+            const Padding(
+              padding: EdgeInsets.only(right: 16.0),
               child: Row(
-                children: const [
+                children: [
                   Text(
                     'My Network',
                     style: TextStyle(
@@ -152,7 +161,6 @@ class _NetworkScreenState extends State<NetworkScreen>
               ),
             ),
             const SizedBox(height: 8),
-            // Search bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 0),
               child: Container(
@@ -198,9 +206,7 @@ class _NetworkScreenState extends State<NetworkScreen>
       ),
       bottomNavigationBar: const MainBottomNav(currentIndex: 1),
       body: myUserId == null
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.blue),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.blue))
           : TabBarView(
               controller: _tabController,
               children: [
@@ -211,19 +217,16 @@ class _NetworkScreenState extends State<NetworkScreen>
     );
   }
 
-  Widget _buildSuggestionsTab(
-      Color cardColor, Color borderColor, Color accent) {
+  // ✅ GROW TAB - Working perfectly
+  Widget _buildSuggestionsTab(Color cardColor, Color borderColor, Color accent) {
     if (loadingSuggestions) {
-      return Center(
-        child: CircularProgressIndicator(color: accent),
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
       );
     }
     if (suggestions.isEmpty) {
       return const Center(
-        child: Text(
-          'No suggestions',
-          style: TextStyle(color: Colors.white),
-        ),
+        child: Text('No suggestions', style: TextStyle(color: Colors.white)),
       );
     }
     return RefreshIndicator(
@@ -234,7 +237,10 @@ class _NetworkScreenState extends State<NetworkScreen>
         itemCount: suggestions.length,
         itemBuilder: (context, i) {
           final u = suggestions[i];
-          final String? pic = u['profile_pic']?.toString();
+          final String profilePic =
+              DobYobSessionManager.resolveUrl(u['profile_pic']?.toString() ?? '');
+          final String name = (u['full_name']?.toString() ?? '').toTitleCase();
+
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
@@ -242,33 +248,36 @@ class _NetworkScreenState extends State<NetworkScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: borderColor),
             ),
-            child: InkWell( // ✅ Wrapped with InkWell for tap
-              onTap: () => _openProfileScreen(u['id'].toString()), // ✅ Profile tap
+            child: InkWell(
+              onTap: () => _openProfileScreen(u['id'].toString()),
               borderRadius: BorderRadius.circular(12),
               child: ListTile(
-                leading: CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  backgroundImage:
-                      (pic != null && pic.isNotEmpty) ? NetworkImage(pic) : null,
-                  child: (pic == null || pic.isEmpty)
-                      ? const Icon(Icons.person, color: Colors.white)
-                      : null,
-                ),
+                leading: profilePic.isNotEmpty
+                    ? CircleAvatar(
+                        radius: 24,
+                        backgroundColor: accent,
+                        backgroundImage: NetworkImage(profilePic),
+                      )
+                    : CircleAvatar(
+                        radius: 24,
+                        backgroundColor: accent,
+                        child: const Icon(Icons.person, color: Colors.white),
+                      ),
                 title: Text(
-                  (u['full_name'] ?? '').toString(),
+                  name,
                   style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 subtitle: Text(
-                  (u['city'] ?? '').toString(),
+                  u['city']?.toString() ?? '',
                   style: const TextStyle(color: Color(0xFF9CA3AF)),
                 ),
                 trailing: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accent,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   ),
                   onPressed: () => _handleConnect(u['id'].toString(), i),
                   child: const Text(
@@ -284,19 +293,16 @@ class _NetworkScreenState extends State<NetworkScreen>
     );
   }
 
-  Widget _buildRequestsTab(
-      Color cardColor, Color borderColor, Color accent) {
+  // ✅ REQUESTS TAB - FULLY FIXED WITH ACTION BUTTONS
+  Widget _buildRequestsTab(Color cardColor, Color borderColor, Color accent) {
     if (loadingRequests) {
-      return Center(
-        child: CircularProgressIndicator(color: accent),
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
       );
     }
     if (requests.isEmpty) {
       return const Center(
-        child: Text(
-          'No requests',
-          style: TextStyle(color: Colors.white),
-        ),
+        child: Text('No requests', style: TextStyle(color: Colors.white)),
       );
     }
     return RefreshIndicator(
@@ -307,7 +313,12 @@ class _NetworkScreenState extends State<NetworkScreen>
         itemCount: requests.length,
         itemBuilder: (context, i) {
           final r = requests[i];
-          final String? pic = r['profile_pic']?.toString();
+          final String profilePic =
+              DobYobSessionManager.resolveUrl(r['profile_pic']?.toString() ?? '');
+          final String senderId = r['sender_id']?.toString() ?? ''; // ✅ API मधील sender_id
+          final String connectionId = r['connection_id']?.toString() ?? ''; // ✅ API मधील connection_id
+          final String name = (r['full_name']?.toString() ?? '').toTitleCase();
+
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
@@ -315,46 +326,96 @@ class _NetworkScreenState extends State<NetworkScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: borderColor),
             ),
-            child: InkWell( // ✅ Wrapped with InkWell for tap
-              onTap: () => _openProfileScreen(r['user_id'].toString()), // ✅ Profile tap
+            child: InkWell(
+              onTap: senderId.isNotEmpty ? () => _openProfileScreen(senderId) : null,
               borderRadius: BorderRadius.circular(12),
-              child: ListTile(
-                leading: CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  backgroundImage:
-                      (pic != null && pic.isNotEmpty) ? NetworkImage(pic) : null,
-                  child: (pic == null || pic.isEmpty)
-                      ? const Icon(Icons.person, color: Colors.white)
-                      : null,
-                ),
-                title: Text(
-                  (r['full_name'] ?? '').toString(),
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  (r['city'] ?? '').toString(),
-                  style: const TextStyle(color: Color(0xFF9CA3AF)),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => _handleRequestAction(
-                        index: i,
-                        connectionId: r['connection_id'].toString(),
-                        action: 'reject',
+                    // Profile Section - 80% width
+                    Expanded(
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: accent,
+                            backgroundImage: profilePic.isNotEmpty
+                                ? NetworkImage(profilePic)
+                                : null,
+                            child: profilePic.isNotEmpty
+                                ? null
+                                : const Icon(Icons.person, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (r['city']?.toString().isNotEmpty == true)
+                                  Text(
+                                    r['city'].toString(),
+                                    style: const TextStyle(color: Color(0xFF9CA3AF)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.check, color: Color(0xFF22C55E)),
-                      onPressed: () => _handleRequestAction(
-                        index: i,
-                        connectionId: r['connection_id'].toString(),
-                        action: 'accept',
-                      ),
+                    // Action Buttons - Right side
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Reject Button
+                        IconButton(
+                          onPressed: connectionId.isNotEmpty
+                              ? () => _handleRequestAction(
+                                    index: i,
+                                    connectionId: connectionId,
+                                    action: 'reject',
+                                  )
+                              : null,
+                          icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444),
+                            shape: const CircleBorder(),
+                            padding: const EdgeInsets.all(6),
+                          ),
+                          tooltip: 'Reject',
+                        ),
+                        const SizedBox(width: 8),
+                        // Accept Button
+                        IconButton(
+                          onPressed: connectionId.isNotEmpty
+                              ? () => _handleRequestAction(
+                                    index: i,
+                                    connectionId: connectionId,
+                                    action: 'accept',
+                                  )
+                              : null,
+                          icon: const Icon(Icons.check, color: Colors.white, size: 20),
+                          style: IconButton.styleFrom(
+                            backgroundColor: accent,
+                            shape: const CircleBorder(),
+                            padding: const EdgeInsets.all(6),
+                          ),
+                          tooltip: 'Accept',
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -364,5 +425,11 @@ class _NetworkScreenState extends State<NetworkScreen>
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 }

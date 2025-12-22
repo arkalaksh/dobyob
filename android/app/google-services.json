@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "862797655794",
+    "project_id": "dobyob-7699a",
+    "storage_bucket": "dobyob-7699a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:862797655794:android:e0f672de29ee171dabea6b",
+        "android_client_info": {
+          "package_name": "com.arkalaksh.dobyob"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE-sYVUEgw9pJBJQCa_JYw62fzUACUBVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

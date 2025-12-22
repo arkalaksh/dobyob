@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
+import 'package:dobyob_1/screens/other_profile_screen.dart';
 
 class ConnectionsScreen extends StatefulWidget {
   final String userId;
@@ -21,8 +23,6 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   void initState() {
     super.initState();
     _connectionsFuture = _api.getMyConnections(widget.userId);
-    // NOTE: ApiService मध्ये getMyConnections(userId) असे method ठेव
-    // जे LinkedIn सारखी connections list परत करेल.
   }
 
   String _titleCase(String? s) {
@@ -86,57 +86,91 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
             ),
             itemBuilder: (context, i) {
               final c = connections[i];
-              final String? pic = c['profile_pic']?.toString();
-              final name = _titleCase(c['full_name']?.toString());
-              final headline = c['headline'] ??
-                  c['profession'] ??
-                  c['business'] ??
-                  '';
-              final connectedOn = c['connected_on']?.toString(); // date string
 
-              return ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                leading: CircleAvatar(
-                  radius: 22,
-                  backgroundColor: const Color(0xFF111827),
-                  backgroundImage:
-                      (pic != null && pic.isNotEmpty) ? NetworkImage(pic) : null,
-                  child: (pic == null || pic.isEmpty)
-                      ? const Icon(Icons.person, color: Colors.white)
-                      : null,
-                ),
-                title: Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              // friend_id backend मधून येतो
+              final String friendId =
+                  c['friend_id']?.toString() ?? c['user_id']?.toString() ?? '';
+
+              // raw path → safe resolved URL (किंवा "")
+              final rawPic = (c['profile_pic'] ?? '').toString().trim();
+              String profilePic = '';
+              if (rawPic.isNotEmpty) {
+                profilePic = DobYobSessionManager.resolveUrl(rawPic).trim();
+              }
+              // अजूनही host नसेल तर ignore करा
+              if (profilePic.isNotEmpty &&
+                  !profilePic.startsWith('http')) {
+                profilePic = '';
+              }
+
+              final name = _titleCase(c['full_name']?.toString());
+              final headline =
+                  c['headline'] ?? c['profession'] ?? c['business'] ?? '';
+              final connectedOn = c['connected_on']?.toString();
+
+              void _openFriendProfile() {
+                if (friendId.isEmpty) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OtherProfileScreen(userId: friendId),
                   ),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (headline.toString().isNotEmpty)
-                      Text(
-                        headline.toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
+                );
+              }
+
+              return InkWell(
+                onTap: _openFriendProfile,
+                child: ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: GestureDetector(
+                    onTap: _openFriendProfile,
+                    child: CircleAvatar(
+                      radius: 22,
+                      backgroundColor: const Color(0xFF111827),
+                      backgroundImage: profilePic.isNotEmpty
+                          ? NetworkImage(profilePic)
+                          : null,
+                      child: profilePic.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                  title: GestureDetector(
+                    onTap: _openFriendProfile,
+                    child: Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
                       ),
-                    if (connectedOn != null && connectedOn.isNotEmpty)
-                      Text(
-                        'Connected on $connectedOn',
-                        style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontSize: 12,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (headline.toString().isNotEmpty)
+                        Text(
+                          headline.toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                  ],
+                      if (connectedOn != null && connectedOn.isNotEmpty)
+                        Text(
+                          'Connected on $connectedOn',
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: const Icon(Icons.near_me, color: Colors.white),
                 ),
-                trailing: const Icon(Icons.near_me, color: Colors.white),
               );
             },
           );

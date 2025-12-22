@@ -4,7 +4,19 @@ import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/widgets/main_bottom_nav.dart';
 import 'package:intl/intl.dart';
 import 'edit_profile_screen.dart';
-import 'connections_screen.dart'; // NEW import
+import 'connections_screen.dart';
+
+// Name/title साठी – प्रत्येक शब्दाचा first letter capital
+extension StringTitleCase on String {
+  String toTitleCase() {
+    if (trim().isEmpty) return '';
+    return trim()
+        .split(RegExp(r'\s+'))
+        .map((word) =>
+            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -25,8 +37,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String userCountry = "";
   String userEmail = "";
   String userMobile = "";
+  String userAddress = "";          // ✅ NEW
+  String userEducation = "";        // ✅ NEW (comma string)
+  List<String> userEducationList = []; // ✅ NEW (parsed list)
   String userProfilePicUrl = "";
-  int connectionsCount = 0; // NEW
+  int connectionsCount = 0;
 
   final ApiService apiService = ApiService();
   bool isLoading = false;
@@ -49,7 +64,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> loadProfile() async {
     setState(() => isLoading = true);
-    final user = await apiService.getProfile(userId);
+
+    final userFuture = apiService.getProfile(userId);
+    final consFuture = apiService.getMyConnections(userId);
+
+    final user = await userFuture;
+    final myConnections = await consFuture;
+
     setState(() {
       isLoading = false;
       if (user != null) {
@@ -63,8 +84,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         userEmail = user['email'] ?? "";
         userMobile = user['phone'] ?? "";
         userDob = user['date_of_birth'] ?? "";
-        // total connections from API (if available)
-        connectionsCount = int.tryParse(user['connections_count']?.toString() ?? '0') ?? 0;
+        userAddress = user['address'] ?? "";            // ✅
+        userEducation = user['education'] ?? "";        // ✅
+
+        // education string -> list  ✅
+        if (userEducation.trim().isNotEmpty) {
+          userEducationList = userEducation
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
+        } else {
+          userEducationList = [];
+        }
+
+        final apiCount =
+            int.tryParse(user['connections_count']?.toString() ?? '0') ?? 0;
+        final listCount = myConnections.length;
+        connectionsCount = apiCount > 0 ? apiCount : listCount;
 
         final rawPic = (user['profile_pic'] ?? "").toString();
         if (rawPic.isEmpty) {
@@ -77,49 +114,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     });
   }
-String get dobLabel {
-  if (userDob.isEmpty) return "";
-  try {
-    final d = DateTime.parse(userDob); // yyyy-MM-dd from your API
-    return DateFormat('dd/MM/yyyy').format(d);
-  } catch (_) {
-    return userDob;
+
+  String get dobLabel {
+    if (userDob.isEmpty) return "";
+    try {
+      final d = DateTime.parse(userDob);
+      return DateFormat('dd/MM/yyyy').format(d);
+    } catch (_) {
+      return userDob;
+    }
   }
-}
+
   Future<void> _logout() async {
-  try {
-    final session = await DobYobSessionManager.getInstance();
-    final uidInt = await session.getUserId();
-    
-    if (uidInt != null) {
-      // Call logout API
-      final response = await apiService.logout(userId: uidInt.toString());
-      
-      if (response?['success'] == true) {
-        // Clear local session
+    try {
+      final session = await DobYobSessionManager.getInstance();
+      final uidInt = await session.getUserId();
+
+      if (uidInt != null) {
+        await apiService.logout(userId: uidInt.toString());
         await session.clearSession();
         if (!mounted) return;
         Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
       } else {
-        // API failed but still clear local session
         await session.clearSession();
         if (!mounted) return;
         Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
       }
-    } else {
-      // No user ID, just clear session
+    } catch (e) {
+      final session = await DobYobSessionManager.getInstance();
       await session.clearSession();
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
     }
-  } catch (e) {
-    // Network error, still clear local session
-    final session = await DobYobSessionManager.getInstance();
-    await session.clearSession();
-    if (!mounted) return;
-    Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -128,16 +155,15 @@ String get dobLabel {
     const borderColor = Color(0xFF1F2937);
     const accent = Color(0xFF0EA5E9);
 
+    // Country mandatory, नंतर state/city
     final location = [
-      if (userCity.isNotEmpty) userCity,
-      if (userState.isNotEmpty) userState,
       if (userCountry.isNotEmpty) userCountry,
+      if (userState.isNotEmpty) userState,
+      if (userCity.isNotEmpty) userCity,
     ].join(", ");
 
-    // display string like "500+ connections"
-    final connectionsLabel = connectionsCount > 500
-        ? "500+ connections"
-        : "$connectionsCount connections";
+    final connectionsLabel =
+        connectionsCount > 500 ? "500+ connections" : "$connectionsCount connections";
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -160,12 +186,11 @@ String get dobLabel {
         ),
         centerTitle: false,
       ),
-      bottomNavigationBar: const MainBottomNav(currentIndex: 3),
+      bottomNavigationBar: const MainBottomNav(currentIndex: 4),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: accent))
           : ListView(
               children: [
-                // header + profile image
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -210,8 +235,6 @@ String get dobLabel {
                   ],
                 ),
                 const SizedBox(height: 42),
-
-                // main card
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Card(
@@ -226,7 +249,6 @@ String get dobLabel {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // name + edit
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -234,29 +256,19 @@ String get dobLabel {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // Name
                                     Text(
-                                      userName.isEmpty ? "Your Name" : userName,
+                                      userName.isEmpty
+                                          ? "Your Name"
+                                          : userName.toTitleCase(),
                                       style: const TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
                                       ),
                                     ),
-                                    const SizedBox(height:6),
-                                     if (dobLabel.isNotEmpty)
-  Text(
-    "DOB: $dobLabel",
-    style: const TextStyle(fontSize: 12, color: Colors.white70),
-  ),
                                     const SizedBox(height: 6),
-                                    if (userBusiness.isNotEmpty)
-                                      Text(
-                                        userBusiness,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
+                                    // Profession / Role
                                     if (userProfession.isNotEmpty)
                                       Text(
                                         userProfession,
@@ -265,16 +277,9 @@ String get dobLabel {
                                           color: Colors.white70,
                                         ),
                                       ),
-                                    if (userIndustry.isNotEmpty)
-                                      Text(
-                                        userIndustry,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
-                                    if (location.isNotEmpty) ...[
-                                      const SizedBox(height: 6),
+                                    const SizedBox(height: 6),
+                                    // Country + state/city
+                                    if (location.isNotEmpty)
                                       Text(
                                         location,
                                         style: const TextStyle(
@@ -282,30 +287,16 @@ String get dobLabel {
                                           color: Colors.white60,
                                         ),
                                       ),
-                                    ],
-                                    const SizedBox(height: 6),
-                                    if (userEmail.isNotEmpty)
-                                      Text(
-                                        "Email: $userEmail",
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
-                                    if (userMobile.isNotEmpty)
-                                      Text(
-                                        "Mobile: $userMobile",
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
+                                    // Mobile / Email / DOB अजिबात दाखवायचे नाहीत
                                   ],
                                 ),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.edit,
-                                    color: accent, size: 22),
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: accent,
+                                  size: 22,
+                                ),
                                 onPressed: () async {
                                   final changed = await Navigator.push<bool>(
                                     context,
@@ -322,12 +313,11 @@ String get dobLabel {
                                         initialDob: userDob,
                                         initialEmail: userEmail,
                                         initialMobile: userMobile,
-                                        initialAddress: '',
-                                        initialEducation: '',
-                                        initialEducationList: const [],
+                                        initialAddress: userAddress,          // ✅
+                                        initialEducation: userEducation,      // ✅
+                                        initialEducationList: userEducationList, // ✅
                                         initialPositions: const [],
-                                        initialProfilePicUrl:
-                                            userProfilePicUrl,
+                                        initialProfilePicUrl: userProfilePicUrl,
                                       ),
                                     ),
                                   );
@@ -338,18 +328,14 @@ String get dobLabel {
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 16),
-
-                          // CLICKABLE "500+ connections"
                           GestureDetector(
                             onTap: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ConnectionsScreen(
-                                    userId: userId,
-                                  ),
+                                  builder: (_) =>
+                                      ConnectionsScreen(userId: userId),
                                 ),
                               );
                             },

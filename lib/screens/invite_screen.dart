@@ -166,7 +166,7 @@ class _InviteScreenState extends State<InviteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-       bottomNavigationBar: const MainBottomNav(currentIndex: 1), // tab index
+       bottomNavigationBar: const MainBottomNav(currentIndex: 2), // tab index
       backgroundColor: bgColor,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(

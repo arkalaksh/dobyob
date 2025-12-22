@@ -8,6 +8,16 @@ class DobYobSessionManager {
 
   DobYobSessionManager._internal();
 
+  // BASE URL (absolute path generation साठी)
+  static const String BASE_URL = "https://dobyob.arkalaksh.com/";
+
+  // Convert relative path → absolute URL
+  static String resolveUrl(String? path) {
+    if (path == null || path.trim().isEmpty) return "";
+    if (path.startsWith("http")) return path; // already full url
+    return BASE_URL + path;
+  }
+
   // Singleton instance
   static Future<DobYobSessionManager> getInstance() async {
     _instance ??= DobYobSessionManager._internal();
@@ -15,7 +25,7 @@ class DobYobSessionManager {
     return _instance!;
   }
 
-  // Keys (DobYob साठी)
+  // Keys
   static const String _keyUserId = 'dy_user_id';
   static const String _keyUserName = 'dy_user_name';
   static const String _keyEmail = 'dy_user_email';
@@ -25,12 +35,12 @@ class DobYobSessionManager {
   static const String _keyIsLoggedIn = 'dy_is_logged_in';
   static const String _keyProfilePicture = 'dy_profile_picture';
 
-  /// Login / registration नंतर user session save कर
+  /// Save user session
   Future<void> saveUserSession({
     required int userId,
     required String name,
     required String email,
-    required String phone, // "+91 9876..." string चालेल
+    required String phone,
     required String deviceToken,
     required String deviceType,
     String? profilePicture,
@@ -46,8 +56,9 @@ class DobYobSessionManager {
         _prefs!.setBool(_keyIsLoggedIn, true),
       ]);
 
-      if (profilePicture != null) {
-        await _prefs!.setString(_keyProfilePicture, profilePicture);
+      if (profilePicture != null && profilePicture.isNotEmpty) {
+        final fullUrl = resolveUrl(profilePicture);
+        await _prefs!.setString(_keyProfilePicture, fullUrl);
       }
 
       if (kDebugMode) {
@@ -63,19 +74,15 @@ class DobYobSessionManager {
 
   // -------- Getters --------
 
-  Future<bool> isLoggedIn() async =>
-      _prefs?.getBool(_keyIsLoggedIn) ?? false;
+  Future<bool> isLoggedIn() async => _prefs?.getBool(_keyIsLoggedIn) ?? false;
 
   Future<int?> getUserId() async => _prefs?.getInt(_keyUserId);
 
-  Future<String?> getUserName() async =>
-      _prefs?.getString(_keyUserName);
+  Future<String?> getUserName() async => _prefs?.getString(_keyUserName);
 
-  Future<String?> getEmail() async =>
-      _prefs?.getString(_keyEmail);
+  Future<String?> getEmail() async => _prefs?.getString(_keyEmail);
 
-  Future<String?> getPhone() async =>
-      _prefs?.getString(_keyPhone);
+  Future<String?> getPhone() async => _prefs?.getString(_keyPhone);
 
   Future<String?> getDeviceToken() async =>
       _prefs?.getString(_keyDeviceToken);
@@ -97,14 +104,15 @@ class DobYobSessionManager {
         'is_logged_in': await isLoggedIn(),
       };
 
-  // -------- Updates (optional) --------
+  // -------- Updates --------
 
   Future<void> updateUserName(String name) async {
     await _prefs!.setString(_keyUserName, name);
   }
 
   Future<void> updateProfilePicture(String url) async {
-    await _prefs!.setString(_keyProfilePicture, url);
+    final fullUrl = resolveUrl(url);
+    await _prefs!.setString(_keyProfilePicture, fullUrl);
   }
 
   // -------- Logout / Clear --------

@@ -1,4 +1,4 @@
-package com.example.dobyob_1
+package com.arkalaksh.dobyob
 
 import io.flutter.embedding.android.FlutterActivity
 

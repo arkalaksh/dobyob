@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // ✅ ADD THIS
+import 'package:intl/intl.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 
@@ -24,6 +24,18 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
   bool actionLoading = false;
 
   static const String _baseUrl = 'https://dobyob.arkalaksh.com';
+
+  String capitalizeName(String name) {
+    if (name.isEmpty) return name;
+
+    return name
+        .trim()
+        .split(" ")
+        .where((e) => e.trim().isNotEmpty)
+        .map((word) =>
+            word[0].toUpperCase() + (word.length > 1 ? word.substring(1).toLowerCase() : ""))
+        .join(" ");
+  }
 
   String? _fullImageUrl(String? path) {
     if (path == null || path.trim().isEmpty) return null;
@@ -130,11 +142,14 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
     const borderColor = Color(0xFF1F2937);
 
     final u = userData!;
-    final String name = (u['full_name'] ?? '').toString();
+
+    final String name = capitalizeName(u['full_name'] ?? '');
+
     final String profession = (u['profession'] ?? '').toString();
     final String business = (u['business'] ?? '').toString();
     final String headline =
         [business, profession].where((e) => e.trim().isNotEmpty).join(' · ');
+
     final String location = [
       if ((u['city'] ?? '').toString().isNotEmpty) u['city'],
       if ((u['state'] ?? '').toString().isNotEmpty) u['state'],
@@ -144,15 +159,14 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
     final String? pic = _fullImageUrl(u['profile_pic']?.toString());
 
     final String industry = (u['industry'] ?? '').toString();
-    final String email = (u['email'] ?? '').toString();
-    final String phone = (u['phone'] ?? '').toString();
+    final String email = (u['email'] ?? '').toString(); // not shown
+    final String phone = (u['phone'] ?? '').toString(); // hidden
     final String dobRaw = (u['date_of_birth'] ?? '').toString();
 
-    // ✅ Format DOB as dd-MM-yyyy
     String dobDisplay = '';
     if (dobRaw.isNotEmpty && dobRaw != '0000-00-00') {
       try {
-        final d = DateTime.parse(dobRaw); // expects yyyy-MM-dd
+        final d = DateTime.parse(dobRaw);
         dobDisplay = DateFormat('dd-MM-yyyy').format(d);
       } catch (_) {
         dobDisplay = dobRaw;
@@ -179,6 +193,9 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
       buttonText = 'Connect';
     }
 
+    final bool isConnected = connectionStatus == 'accepted';
+    final bool showPrivateInfo = isConnected;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
       child: Column(
@@ -194,7 +211,6 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // avatar + name/prof/location
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
@@ -254,40 +270,10 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                   ),
                 ),
 
-                // phone + DOB (email hidden)
-                if (phone.isNotEmpty || dobDisplay.isNotEmpty)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (phone.isNotEmpty)
-                          Text(
-                            phone,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        if (dobDisplay.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              "DOB: $dobDisplay", // ✅ dd-MM-yyyy
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+                // phone / DOB section पूर्ण hide – काहीच नाही
 
                 const SizedBox(height: 8),
 
-                // button
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -333,7 +319,7 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
 
           const SizedBox(height: 16),
 
-          // ABOUT card
+          // ABOUT CARD
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
@@ -354,11 +340,22 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (industry.isNotEmpty) _detailRow('Industry', industry),
-                if (education.isNotEmpty) _detailRow('Education', education),
-                if (positions.isNotEmpty) _detailRow('Role', positions),
-                if (address.isNotEmpty) _detailRow('Address', address),
-                if (industry.isEmpty &&
+
+                if (showPrivateInfo && industry.isNotEmpty)
+                  _detailRow('Industry', industry),
+                if (showPrivateInfo && education.isNotEmpty)
+                  _detailRow('Education', education),
+                if (showPrivateInfo && positions.isNotEmpty)
+                  _detailRow('Role', positions),
+                if (showPrivateInfo && address.isNotEmpty)
+                  _detailRow('Address', address),
+
+                if (!showPrivateInfo)
+                  const Text(
+                    'Connect to see more details.',
+                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  )
+                else if (industry.isEmpty &&
                     education.isEmpty &&
                     positions.isEmpty &&
                     address.isEmpty)
@@ -400,7 +397,7 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                 fontSize: 13,
               ),
             ),
-          ),
+          )
         ],
       ),
     );

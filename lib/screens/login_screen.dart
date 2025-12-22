@@ -2,10 +2,12 @@ import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/widgets/social_buttons.dart';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
+import 'dart:io' show Platform;
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
+  final String fcmToken;
+  const LoginScreen({super.key, required this.fcmToken});
+  
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -19,12 +21,17 @@ class _LoginScreenState extends State<LoginScreen> {
   bool otpFieldVisible = false;
   bool isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // PRINT FCM TOKEN IN DEBUG CONSOLE
+    print('LoginScreen FCM Token: ${widget.fcmToken}');
+  }
+
   // Email MUST be valid and MUST end with .com
   bool _isValidEmail(String email) {
     final trimmed = email.trim();
-    final reg = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$',
-    );
+    final reg = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$');
     return reg.hasMatch(trimmed);
   }
 
@@ -50,14 +57,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please enter a valid .com email address')),
+        const SnackBar(content: Text('Please enter a valid .com email address')),
       );
       return;
     }
 
     setState(() => isLoading = true);
-    final res = await apiService.sendEmailOtp(email: email);
+    final res = await apiService.sendEmailOtp(
+      email: email,
+      deviceToken: widget.fcmToken,
+      deviceType: Platform.isAndroid ? 'android' : 'ios',
+    );
     setState(() => isLoading = false);
 
     if (res['success'] == true) {
@@ -70,9 +80,28 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text(res['message'] ?? 'OTP sent to your email')),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res['message'] ?? 'Failed to send OTP')),
-      );
+      final errorMsg = res['error']?.toString() ?? 'Failed to send OTP';
+      
+      if (errorMsg.contains('not registered') || 
+          errorMsg.contains('Create your account') || 
+          res['user_exists'] == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Create your account first!'),
+            backgroundColor: const Color.fromARGB(255, 11, 65, 88),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        Future.delayed(const Duration(seconds: 2), () {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          Navigator.pushReplacementNamed(context, '/intro');
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg)),
+        );
+      }
     }
   }
 
@@ -81,8 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please enter a valid .com email address')),
+        const SnackBar(content: Text('Please enter a valid .com email address')),
       );
       return;
     }
@@ -99,18 +127,20 @@ class _LoginScreenState extends State<LoginScreen> {
     final res = await apiService.verifyLoginOtp(
       email: email,
       otp: otp,
+      deviceToken: widget.fcmToken,
+      deviceType: Platform.isAndroid ? 'android' : 'ios',
     );
     setState(() => isLoading = false);
 
     if (res['success'] == true) {
       final data = res['user'] ?? res;
       final int userId = int.parse(data['user_id'].toString());
-      final String name =
-          (data['full_name'] ?? data['name'] ?? '').toString();
+      final String name = (data['full_name'] ?? data['name'] ?? '').toString();
       final String userEmail = data['email'] ?? email;
       final String phone = data['phone'] ?? '';
-      const String deviceToken = '';
-      const String deviceType = 'android';
+      
+      final String deviceToken = widget.fcmToken;
+      final String deviceType = Platform.isAndroid ? 'android' : 'ios';
 
       final session = await DobYobSessionManager.getInstance();
       await session.saveUserSession(
@@ -191,8 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsets.only(left: 20, right: 20, top: 10),
+                  padding: const EdgeInsets.only(left: 20, right: 20, top: 10),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -207,19 +236,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 4),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 62),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 62),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // ... rest of your build method stays exactly same
                         Center(
                           child: Column(
                             children: const [
                               CircleAvatar(
                                 radius: 28,
                                 backgroundColor: circleColor,
-                                child: Icon(Icons.person,
-                                    color: Colors.white, size: 26),
+                                child: Icon(Icons.person, color: Colors.white, size: 26),
                               ),
                               SizedBox(height: 8),
                               Text(
@@ -260,15 +288,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             hintText: 'Enter your email',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFF6B7280),
-                            ),
+                            hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                             filled: true,
                             fillColor: fieldColor,
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(
-                                  color: Color(0xFF1F2937)),
+                              borderSide: const BorderSide(color: Color(0xFF1F2937)),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -315,8 +340,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 12),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                             onPressed: isLoading
                                 ? null
@@ -331,9 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   )
                                 : Text(
-                                    otpFieldVisible
-                                        ? "Verify OTP"
-                                        : "Send OTP",
+                                    otpFieldVisible ? "Verify OTP" : "Send OTP",
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 15,
@@ -348,13 +370,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             const Text(
                               "Don't have an account? ",
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 12),
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.pushReplacementNamed(
-                                    context, '/signup');
+                                Navigator.pushReplacementNamed(context, '/signup');
                               },
                               child: const Text(
                                 "Sign Up",

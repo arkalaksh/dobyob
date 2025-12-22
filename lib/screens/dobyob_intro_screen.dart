@@ -129,7 +129,7 @@ class DobYobIntroScreen extends StatelessWidget {
                     const SizedBox(height: 10),
                     TextButton(
                       onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/home');
+                        Navigator.pushNamed(context, '/explore'); // Add this route
                       },
                       child: const Text(
                         'Explore the app',

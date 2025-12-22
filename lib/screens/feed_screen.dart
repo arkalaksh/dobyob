@@ -7,7 +7,6 @@ import 'package:dobyob_1/screens/other_profile_screen.dart';
 import 'create_post_screen.dart';
 import 'package:intl/intl.dart';
 
-
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -40,12 +39,22 @@ class _FeedScreenState extends State<FeedScreen> {
     final uidInt = await session.getUserId();
     if (!mounted || uidInt == null) return;
 
-    final pic = await session.getProfilePicture();
+    String? localPic = await session.getProfilePicture();
+    String? finalPic = localPic;
 
-    if (!mounted) return;
+    if (localPic == null || localPic.isEmpty) {
+      final user = await _api.getProfile(uidInt.toString());
+      final apiPic = user?['profile_pic']?.toString();
+
+      if (apiPic != null && apiPic.isNotEmpty) {
+        finalPic = apiPic;
+        await session.updateProfilePicture(apiPic);
+      }
+    }
+
     setState(() {
       myUserId = uidInt.toString();
-      myProfilePic = pic;
+      myProfilePic = finalPic ?? "";
       postsFuture = _api.getPosts(userId: myUserId!);
     });
   }
@@ -57,36 +66,31 @@ class _FeedScreenState extends State<FeedScreen> {
     });
   }
 
- String _formatPostTime(String? createdAt) {
-  if (createdAt == null || createdAt.isEmpty) return '';
+  String _formatPostTime(String? createdAt) {
+    if (createdAt == null || createdAt.isEmpty) return '';
 
-  try {
-    // FIX: Parse the custom backend format
-    final dt = DateFormat("yyyy-MM-dd hh:mm:ss a").parse(createdAt).toLocal();
+    try {
+      final dt =
+          DateFormat("yyyy-MM-dd hh:mm:ss a").parse(createdAt).toLocal();
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final postDay = DateTime(dt.year, dt.month, dt.day);
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final postDay = DateTime(dt.year, dt.month, dt.day);
 
-    final difference = today.difference(postDay).inDays;
+      final difference = today.difference(postDay).inDays;
 
-    // Today → show time (12-hour format)
-    if (difference == 0) {
-      return DateFormat('hh:mm a').format(dt);
+      if (difference == 0) {
+        return DateFormat('hh:mm a').format(dt);
+      }
+      if (difference == 1) {
+        return "Yesterday";
+      }
+      return DateFormat('MMM d, yyyy').format(dt);
+    } catch (e) {
+      return '';
     }
-
-    // Yesterday
-    if (difference == 1) {
-      return "Yesterday";
-    }
-
-    // Older posts → show full date
-    return DateFormat('MMM d, yyyy').format(dt);
-
-  } catch (e) {
-    return '';
   }
-}
+
   String _titleCase(String? input) {
     if (input == null || input.trim().isEmpty) return '';
     return input
@@ -139,11 +143,37 @@ class _FeedScreenState extends State<FeedScreen> {
     return _api.getPostLikes(postId);
   }
 
+  List<Map<String, dynamic>> _sortCommentsByDate(
+      List<Map<String, dynamic>> comments) {
+    return comments
+      ..sort((a, b) {
+        final dateA =
+            DateTime.tryParse(a['created_at'] ?? '') ?? DateTime(1970);
+        final dateB =
+            DateTime.tryParse(b['created_at'] ?? '') ?? DateTime(1970);
+        return dateB.compareTo(dateA);
+      });
+  }
+
+  void _openUserProfileFromId(String userId) {
+    if (myUserId != null && userId == myUserId) {
+      Navigator.pushReplacementNamed(context, '/profile');
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtherProfileScreen(userId: userId),
+        ),
+      );
+    }
+  }
+
   void _showCommentsSheet(Map<String, dynamic> post) async {
     final postId = post['id'].toString();
     final TextEditingController commentCtrl = TextEditingController();
 
     List<Map<String, dynamic>> comments = await _loadComments(postId);
+    comments = _sortCommentsByDate(comments);
 
     if (!mounted) return;
     showModalBottomSheet(
@@ -198,26 +228,49 @@ class _FeedScreenState extends State<FeedScreen> {
                                 itemCount: comments.length,
                                 itemBuilder: (_, i) {
                                   final c = comments[i];
-                                  return ListTile(
-                                    leading: const CircleAvatar(
-                                      radius: 18,
-                                      backgroundColor: Color(0xFF111827),
-                                      child: Icon(Icons.person,
-                                          color: Colors.white, size: 18),
-                                    ),
-                                    title: Text(
-                                      _titleCase(c['full_name']?.toString()),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
+                                  final String commenterId =
+                                      c['user_id']?.toString() ?? '';
+                                  final String fullName =
+                                      _titleCase(c['full_name']?.toString());
+                                  final String rawPic =
+                                      c['profile_pic']?.toString() ?? '';
+                                  final String picUrl =
+                                      DobYobSessionManager.resolveUrl(rawPic);
+
+                                  return InkWell(
+                                    onTap: commenterId.isNotEmpty
+                                        ? () =>
+                                            _openUserProfileFromId(commenterId)
+                                        : null,
+                                    child: ListTile(
+                                      leading: (picUrl.isNotEmpty)
+                                          ? CircleAvatar(
+                                              radius: 18,
+                                              backgroundImage:
+                                                  NetworkImage(picUrl),
+                                            )
+                                          : const CircleAvatar(
+                                              radius: 18,
+                                              backgroundColor:
+                                                  Color(0xFF111827),
+                                              child: Icon(Icons.person,
+                                                  color: Colors.white,
+                                                  size: 18),
+                                            ),
+                                      title: Text(
+                                        fullName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
                                       ),
-                                    ),
-                                    subtitle: Text(
-                                      c['content'] ?? '',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 13,
+                                      subtitle: Text(
+                                        c['content'] ?? '',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                        ),
                                       ),
                                     ),
                                   );
@@ -232,43 +285,68 @@ class _FeedScreenState extends State<FeedScreen> {
                               horizontal: 12, vertical: 8),
                           child: Row(
                             children: [
-                              const CircleAvatar(
-                                radius: 18,
-                                backgroundColor: Color(0xFF111827),
-                                child: Icon(Icons.person,
-                                    color: Colors.white, size: 18),
-                              ),
+                              if (myProfilePic != null &&
+                                  myProfilePic!.isNotEmpty)
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundImage: NetworkImage(
+                                    DobYobSessionManager.resolveUrl(
+                                        myProfilePic!),
+                                  ),
+                                )
+                              else
+                                const CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Color(0xFF111827),
+                                  child: Icon(Icons.person,
+                                      color: Colors.white, size: 18),
+                                ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: TextField(
                                   controller: commentCtrl,
                                   style: const TextStyle(
-                                      color: Colors.white, fontSize: 14),
-                                  decoration: const InputDecoration(
-                                    hintText: "Add a comment…",
-                                    hintStyle:
-                                        TextStyle(color: Color(0xFF6B7280)),
-                                    border: InputBorder.none,
+                                      fontSize: 14, color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Write a comment...',
+                                    hintStyle: const TextStyle(
+                                        color: Color(0xFF6B7280)),
+                                    filled: true,
+                                    fillColor: const Color(0xFF020817),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFF1F2937)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFF1F2937)),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFF0EA5E9)),
+                                    ),
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
                                   ),
+                                  maxLines: null,
+                                  textInputAction: TextInputAction.send,
+                                  onSubmitted: (_) {
+                                    _postComment(commentCtrl, postId,
+                                        setSheetState, comments);
+                                  },
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               TextButton(
-                                onPressed: () async {
-                                  final text = commentCtrl.text.trim();
-                                  if (text.isEmpty) return;
-
-                                  await _addComment(postId, text);
-                                  commentCtrl.clear();
-                                  final fresh = await _loadComments(postId);
-
-                                  setSheetState(() {
-                                    comments = fresh;
-                                  });
-
-                                  if (mounted) {
-                                    refreshPosts();
-                                  }
-                                },
+                                onPressed: () => _postComment(
+                                    commentCtrl,
+                                    postId,
+                                    setSheetState,
+                                    comments),
                                 child: const Text(
                                   "Post",
                                   style: TextStyle(
@@ -292,6 +370,46 @@ class _FeedScreenState extends State<FeedScreen> {
     ).whenComplete(() {
       refreshPosts();
     });
+  }
+
+  void _postComment(
+      TextEditingController ctrl,
+      String postId,
+      StateSetter setSheetState,
+      List<Map<String, dynamic>> comments) async {
+    final text = ctrl.text.trim();
+    if (text.isEmpty || myUserId == null) return;
+
+    await _addComment(postId, text);
+    ctrl.clear();
+
+    final newComment = {
+      'user_id': myUserId,
+      'full_name': 'You',
+      'profile_pic': myProfilePic ?? '',
+      'content': text,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+
+    setSheetState(() {
+      comments.insert(0, newComment);
+    });
+
+    Future.delayed(const Duration(milliseconds: 800), () async {
+      if (mounted) {
+        final fresh = await _loadComments(postId);
+        final sorted = _sortCommentsByDate(fresh);
+        setSheetState(() {
+          comments
+            ..clear()
+            ..addAll(sorted);
+        });
+      }
+    });
+
+    if (mounted) {
+      refreshPosts();
+    }
   }
 
   void _showLikesSheet(Map<String, dynamic> post) async {
@@ -346,25 +464,39 @@ class _FeedScreenState extends State<FeedScreen> {
                             itemCount: likes.length,
                             itemBuilder: (_, i) {
                               final u = likes[i];
-                              final String? pic = u['profile_pic']?.toString();
-                              return ListTile(
-                                leading: (pic != null && pic.isNotEmpty)
-                                    ? CircleAvatar(
-                                        radius: 20,
-                                        backgroundImage: NetworkImage(pic),
-                                      )
-                                    : const CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: Color(0xFF111827),
-                                        child: Icon(Icons.person,
-                                            color: Colors.white, size: 18),
-                                      ),
-                                title: Text(
-                                  _titleCase(u['full_name']?.toString()),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                              final String uid =
+                                  u['user_id']?.toString() ?? '';
+                              final String name =
+                                  _titleCase(u['full_name']?.toString());
+                              final String picRaw =
+                                  u['profile_pic']?.toString() ?? '';
+                              final String picUrl =
+                                  DobYobSessionManager.resolveUrl(picRaw);
+
+                              return InkWell(
+                                onTap: uid.isNotEmpty
+                                    ? () => _openUserProfileFromId(uid)
+                                    : null,
+                                child: ListTile(
+                                  leading: (picUrl.isNotEmpty)
+                                      ? CircleAvatar(
+                                          radius: 20,
+                                          backgroundImage:
+                                              NetworkImage(picUrl),
+                                        )
+                                      : const CircleAvatar(
+                                          radius: 20,
+                                          backgroundColor: Color(0xFF111827),
+                                          child: Icon(Icons.person,
+                                              color: Colors.white, size: 18),
+                                        ),
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
                               );
@@ -392,7 +524,9 @@ class _FeedScreenState extends State<FeedScreen> {
     const accent = Color(0xFF0EA5E9);
 
     final String? headerPhoto =
-        (myUserId != null && myProfilePic != null && myProfilePic!.trim().isNotEmpty)
+        (myUserId != null &&
+                myProfilePic != null &&
+                myProfilePic!.trim().isNotEmpty)
             ? myProfilePic!.trim()
             : null;
 
@@ -414,56 +548,55 @@ class _FeedScreenState extends State<FeedScreen> {
               child: CircleAvatar(
                 radius: 22,
                 backgroundColor: accent,
-                backgroundImage:
-                    (headerPhoto != null) ? NetworkImage(headerPhoto) : null,
+                backgroundImage: (headerPhoto != null)
+                    ? NetworkImage(
+                        DobYobSessionManager.resolveUrl(headerPhoto))
+                    : null,
                 child: (headerPhoto != null)
                     ? null
-                    : const Icon(Icons.person, color: Colors.white, size: 26),
+                    : const Icon(Icons.person,
+                        color: Colors.white, size: 26),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Container(
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF020817),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: borderColor),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search,
-                        color: Color(0xFF6B7280), size: 20),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style:
-                            const TextStyle(fontSize: 14, color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: 'Search',
-                          hintStyle: TextStyle(color: Color(0xFF6B7280)),
-                          border: InputBorder.none,
-                          isDense: true,
-                        ),
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (value) {
-                          final q = value.trim();
-                          if (q.isEmpty || myUserId == null) return;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => SearchUsersScreen(
-                                currentUserId: myUserId!,
-                                query: q,
-                              ),
-                            ),
-                          );
-                        },
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  if (myUserId == null) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SearchUsersScreen(
+                        currentUserId: myUserId!,
+                        query: '',
                       ),
                     ),
-                  ],
+                  );
+                },
+                child: Container(
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF020817),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: borderColor),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.search,
+                          color: Color(0xFF6B7280), size: 20),
+                      SizedBox(width: 6),
+                      Text(
+                        'Search',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -490,15 +623,17 @@ class _FeedScreenState extends State<FeedScreen> {
       bottomNavigationBar: const MainBottomNav(currentIndex: 0),
       body: myUserId == null
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+              child:
+                  CircularProgressIndicator(color: Color(0xFF0EA5E9)),
             )
           : FutureBuilder<List<Map<String, dynamic>>>(
               future: postsFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const Center(
-                    child:
-                        CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+                    child: CircularProgressIndicator(
+                        color: Color(0xFF0EA5E9)),
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -511,12 +646,14 @@ class _FeedScreenState extends State<FeedScreen> {
                 }
                 final posts = snapshot.data!;
                 return Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
                   child: ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 90, top: 8),
+                    padding: const EdgeInsets.only(
+                        bottom: 90, top: 8),
                     itemCount: posts.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: 10),
                     itemBuilder: (context, i) {
                       final post = posts[i];
                       final bool isLiked =
@@ -527,51 +664,52 @@ class _FeedScreenState extends State<FeedScreen> {
                                   "true";
 
                       final String postOwnerId =
-                          post['user_id'].toString(); // owner id
+                          post['user_id'].toString();
 
                       void _openOwnerProfile() {
-                        if (myUserId != null &&
-                            postOwnerId == myUserId) {
-                          // स्वतःची post असेल तर direct main profile screen
-                          Navigator.pushReplacementNamed(context, '/profile');
-                        } else {
-                          // other user ची profile
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  OtherProfileScreen(userId: postOwnerId),
-                            ),
-                          );
-                        }
+                        _openUserProfileFromId(postOwnerId);
                       }
 
                       return Container(
                         decoration: BoxDecoration(
                           color: cardBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: borderColor, width: 1.2),
+                          border: Border.all(
+                              color: borderColor, width: 1.2),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.center,
                                 children: [
                                   GestureDetector(
                                     onTap: _openOwnerProfile,
-                                    child: (post['profile_pic'] != null &&
-                                            post['profile_pic'] != "")
+                                    child: (DobYobSessionManager
+                                                    .resolveUrl(
+                                                        post['profile_pic']) !=
+                                                null &&
+                                            DobYobSessionManager
+                                                    .resolveUrl(
+                                                        post['profile_pic']) !=
+                                                "")
                                         ? CircleAvatar(
-                                            backgroundImage: NetworkImage(
-                                                post['profile_pic']),
+                                            backgroundImage:
+                                                NetworkImage(
+                                              DobYobSessionManager
+                                                  .resolveUrl(
+                                                      post['profile_pic']),
+                                            ),
                                             radius: 22,
                                           )
                                         : const CircleAvatar(
                                             radius: 22,
-                                            backgroundColor: Color(0xFF111827),
+                                            backgroundColor:
+                                                Color(0xFF111827),
                                             child: Icon(Icons.person,
                                                 color: Colors.white),
                                           ),
@@ -582,13 +720,15 @@ class _FeedScreenState extends State<FeedScreen> {
                                       onTap: _openOwnerProfile,
                                       child: Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment
+                                                .start,
                                         children: [
                                           Text(
-                                            _titleCase(
-                                                post['full_name']?.toString()),
+                                            _titleCase(post['full_name']
+                                                ?.toString()),
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
+                                              fontWeight:
+                                                  FontWeight.w600,
                                               fontSize: 15,
                                               color: Colors.white,
                                             ),
@@ -598,18 +738,13 @@ class _FeedScreenState extends State<FeedScreen> {
                                     ),
                                   ),
                                   Text(
-                                    _formatPostTime(
-                                        post['created_at']?.toString()),
+                                    _formatPostTime(post['created_at']
+                                        ?.toString()),
                                     style: const TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xFF6B7280),
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.more_horiz,
-                                        size: 22, color: Colors.white),
-                                    onPressed: () {},
-                                    splashRadius: 18,
                                   ),
                                 ],
                               ),
@@ -626,33 +761,22 @@ class _FeedScreenState extends State<FeedScreen> {
                                   post['image_url'] != "")
                                 Container(
                                   margin:
-                                      const EdgeInsets.symmetric(vertical: 12),
+                                      const EdgeInsets.symmetric(
+                                          vertical: 12),
                                   width: double.infinity,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius:
+                                        BorderRadius.circular(10),
                                     color: const Color(0xFF020817),
-                                    border: Border.all(color: borderColor),
+                                    border: Border.all(
+                                        color: borderColor),
                                   ),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius:
+                                        BorderRadius.circular(10),
                                     child: Image.network(
                                       post['image_url'],
                                       fit: BoxFit.contain,
-                                      loadingBuilder:
-                                          (context, child, progress) {
-                                        if (progress == null) {
-                                          return child;
-                                        }
-                                        return const SizedBox(
-                                          height: 180,
-                                          child: Center(
-                                            child:
-                                                CircularProgressIndicator(
-                                              color: accent,
-                                            ),
-                                          ),
-                                        );
-                                      },
                                     ),
                                   ),
                                 ),
@@ -669,22 +793,22 @@ class _FeedScreenState extends State<FeedScreen> {
                                     ),
                                     onPressed: () =>
                                         _handleToggleLike(post),
-                                    splashRadius: 20,
                                   ),
                                   IconButton(
                                     icon: const Icon(
                                       Icons.mode_comment_outlined,
                                       color: Colors.white,
                                     ),
-                                    onPressed: () => _openComments(post),
-                                    splashRadius: 20,
+                                    onPressed: () =>
+                                        _openComments(post),
                                   ),
                                 ],
                               ),
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () => _showLikesSheet(post),
+                                    onTap: () =>
+                                        _showLikesSheet(post),
                                     child: Text(
                                       "${post['likes_count']} Likes",
                                       style: const TextStyle(
@@ -696,7 +820,8 @@ class _FeedScreenState extends State<FeedScreen> {
                                   ),
                                   const SizedBox(width: 12),
                                   GestureDetector(
-                                    onTap: () => _openComments(post),
+                                    onTap: () =>
+                                        _openComments(post),
                                     child: Text(
                                       "${post['comments_count']} Comments",
                                       style: const TextStyle(

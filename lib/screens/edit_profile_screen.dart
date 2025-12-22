@@ -4,7 +4,6 @@ import 'package:dobyob_1/services/api_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'edit_contact_info_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String userId;
@@ -19,7 +18,7 @@ class EditProfileScreen extends StatefulWidget {
   final String initialEmail;
   final String initialMobile;
   final String initialAddress;
-  final String initialEducation;
+  final String initialEducation;          // comma-separated किंवा "[]"
   final List<String> initialEducationList;
   final List<String> initialPositions;
   final String initialProfilePicUrl;
@@ -61,8 +60,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController countryController;
   late TextEditingController addressController;
 
-  String email = "";
-  String joinedMobile = "";
+  late TextEditingController emailController;
+  late TextEditingController mobileController;
+
+  // education
+  final TextEditingController educationInputController =
+      TextEditingController();
+  List<String> educationList = [];
+
   File? selectedProfilePic;
   String profilePicUrl = "";
   DateTime? selectedDate;
@@ -95,6 +100,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? stateError;
   String? addressError;
   String? countryError;
+  String? emailError;
+  String? mobileError;
 
   bool get _isFormValid {
     return nameError == null &&
@@ -106,6 +113,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         stateError == null &&
         addressError == null &&
         countryError == null &&
+        emailError == null &&
+        mobileError == null &&
         nameController.text.trim().isNotEmpty &&
         selectedCountry.isNotEmpty &&
         selectedDate != null;
@@ -117,15 +126,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     nameController = TextEditingController(text: widget.initialName);
     businessController = TextEditingController(text: widget.initialBusiness);
-    professionController = TextEditingController(text: widget.initialProfession);
+    professionController =
+        TextEditingController(text: widget.initialProfession);
     industryController = TextEditingController(text: widget.initialIndustry);
     cityController = TextEditingController(text: widget.initialCity);
     stateController = TextEditingController(text: widget.initialState);
     countryController = TextEditingController(text: widget.initialCountry);
     addressController = TextEditingController(text: widget.initialAddress);
 
-    email = widget.initialEmail;
-    joinedMobile = widget.initialMobile;
+    emailController = TextEditingController(text: widget.initialEmail);
+    mobileController = TextEditingController(text: widget.initialMobile);
+
+    // ---------- EDUCATION INIT (IMPORTANT) ----------
+    // 1) जर ProfileScreen कडून आधीच list आली असेल ती घ्या
+    if (widget.initialEducationList.isNotEmpty) {
+      educationList = List<String>.from(widget.initialEducationList);
+    } else {
+      // 2) DB मध्ये string असेल तर वापर; पण "[]" / "null" / रिकामा असेल तर ignore
+      final rawEdu = widget.initialEducation.trim();
+      if (rawEdu.isNotEmpty &&
+          rawEdu != '[]' &&
+          rawEdu.toLowerCase() != 'null') {
+        educationList = rawEdu
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      } else {
+        educationList = [];
+      }
+    }
+    // ---------- END EDUCATION INIT ----------
+
     profilePicUrl = widget.initialProfilePicUrl;
     selectedCountry = widget.initialCountry;
 
@@ -151,6 +183,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     cityController.addListener(_validateCity);
     stateController.addListener(_validateState);
     addressController.addListener(_validateAddress);
+    emailController.addListener(_validateEmail);
+    mobileController.addListener(_validateMobile);
   }
 
   void _runInitialValidation() {
@@ -163,6 +197,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _validateState();
     _validateAddress();
     _validateCountry(selectedCountry);
+    _validateEmail();
+    _validateMobile();
   }
 
   @override
@@ -176,11 +212,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     stateController.dispose();
     countryController.dispose();
     addressController.dispose();
+    emailController.dispose();
+    mobileController.dispose();
+    educationInputController.dispose();
     super.dispose();
   }
 
-  // ===== VALIDATORS (25 chars max where needed) =====
-
+  // ===== VALIDATORS =====
   void _validateName() {
     final text = nameController.text.trim();
     setState(() {
@@ -272,6 +310,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
+  void _validateEmail() {
+    final text = emailController.text.trim();
+    setState(() {
+      if (text.isEmpty) {
+        emailError = 'Email is required';
+      } else if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$')
+          .hasMatch(text)) {
+        emailError = 'Enter valid .com email address';
+      } else {
+        emailError = null;
+      }
+    });
+  }
+
+  void _validateMobile() {
+    final text = mobileController.text.trim();
+    final cleaned = text.replaceAll(RegExp(r'[^\d]'), '');
+    setState(() {
+      if (text.isEmpty) {
+        mobileError = 'Mobile is required';
+      } else if (cleaned.length != 10) {
+        mobileError = 'Enter valid 10-digit mobile number';
+      } else {
+        mobileError = null;
+      }
+    });
+  }
+
   void _validateCountry(String? value) {
     setState(() {
       if (value == null || value.isEmpty) {
@@ -335,8 +401,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         elevation: 0,
         centerTitle: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 20),
+          icon:
+              const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -361,6 +427,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // avatar
             Center(
               child: Stack(
                 children: [
@@ -412,6 +479,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 8),
 
+            // name
             TextField(
               controller: nameController,
               style: const TextStyle(color: Colors.white),
@@ -434,6 +502,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             const SizedBox(height: 12),
 
+            // Email
+            TextField(
+              controller: emailController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: "Email *",
+                labelStyle: const TextStyle(color: Colors.white70),
+                enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: accent)),
+                errorText: emailError,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Mobile
+            TextField(
+              controller: mobileController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: "Mobile *",
+                labelStyle: const TextStyle(color: Colors.white70),
+                enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: accent)),
+                errorText: mobileError,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // business
             TextField(
               controller: businessController,
               style: const TextStyle(color: Colors.white),
@@ -456,6 +559,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             const SizedBox(height: 12),
 
+            // DOB
             TextField(
               controller: dobController,
               readOnly: true,
@@ -463,8 +567,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: InputDecoration(
                 labelText: "Date of Birth *",
                 labelStyle: const TextStyle(color: Colors.white70),
-                suffixIcon:
-                    const Icon(Icons.calendar_today, color: Color(0xFF0EA5E9)),
+                suffixIcon: const Icon(Icons.calendar_today,
+                    color: Color(0xFF0EA5E9)),
                 enabledBorder: const UnderlineInputBorder(
                     borderSide: BorderSide(color: Colors.white24)),
                 focusedBorder: const UnderlineInputBorder(
@@ -482,6 +586,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             const SizedBox(height: 12),
 
+            // profession
             TextField(
               controller: professionController,
               style: const TextStyle(color: Colors.white),
@@ -504,6 +609,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             const SizedBox(height: 12),
 
+            // industry
             TextField(
               controller: industryController,
               style: const TextStyle(color: Colors.white),
@@ -524,6 +630,74 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   style: const TextStyle(color: Colors.red, fontSize: 12),
                 ),
               ),
+            const SizedBox(height: 20),
+
+            // EDUCATION SECTION
+            const Text(
+              "Education",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            if (educationList.isNotEmpty)
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: educationList.length,
+                itemBuilder: (context, index) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    educationList[index],
+                    style:
+                        const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete,
+                        size: 18, color: Colors.redAccent),
+                    onPressed: () =>
+                        setState(() => educationList.removeAt(index)),
+                  ),
+                ),
+              ),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: educationInputController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: "Add education",
+                      labelStyle: TextStyle(color: Colors.white70),
+                      enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24)),
+                      focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: accent)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () {
+                    final text = educationInputController.text.trim();
+                    if (text.isNotEmpty) {
+                      setState(() {
+                        educationList.add(text);
+                        educationInputController.clear();
+                      });
+                    }
+                  },
+                  child: const Text(
+                    'Add',
+                    style: TextStyle(color: accent),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
 
             const Text(
@@ -548,10 +722,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               dropdownColor: bgColor,
               style: const TextStyle(color: Colors.white),
               items: countries
-                  .map((c) => DropdownMenuItem<String>(
-                        value: c,
-                        child: Text(c),
-                      ))
+                  .map((c) =>
+                      DropdownMenuItem<String>(value: c, child: Text(c)))
                   .toList(),
               onChanged: (v) {
                 selectedCountry = v ?? '';
@@ -632,52 +804,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   style: const TextStyle(color: Colors.red, fontSize: 12),
                 ),
               ),
-            const SizedBox(height: 20),
-
-            const Text(
-              "Contact info",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                email,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              subtitle: Text(
-                joinedMobile.isEmpty
-                    ? "Tap to edit contact info"
-                    : "Phone: $joinedMobile",
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              trailing: const Icon(Icons.chevron_right,
-                  color: Colors.white70, size: 20),
-              onTap: () async {
-                final result = await Navigator.push<Map<String, String>?>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EditContactInfoScreen(
-                      initialEmail: email,
-                      initialMobile: joinedMobile,
-                      initialAddress: addressController.text,
-                    ),
-                  ),
-                );
-                if (result != null) {
-                  setState(() {
-                    email = result['email'] ?? email;
-                    joinedMobile = result['mobile'] ?? joinedMobile;
-                    addressController.text =
-                        result['address'] ?? addressController.text;
-                    _validateAddress();
-                  });
-                }
-              },
-            ),
             const SizedBox(height: 24),
 
             SizedBox(
@@ -711,13 +837,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           profession: professionController.text.trim(),
                           industry: industryController.text.trim(),
                           dateOfBirth: formattedDob,
-                          email: email,
-                          phone: joinedMobile,
+                          email: emailController.text.trim(),
+                          phone: mobileController.text.trim(),
                           address: addressController.text.trim(),
                           city: cityController.text.trim(),
                           state: stateController.text.trim(),
                           country: selectedCountry,
-                          educationList: const [],
+                          educationList: educationList,
                           positionsList: const [],
                           profilePic: selectedProfilePic,
                         );
@@ -733,8 +859,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             userId: int.parse(user['id'].toString()),
                             name: user['full_name'] ??
                                 nameController.text.trim(),
-                            email: user['email'] ?? email,
-                            phone: user['phone'] ?? joinedMobile,
+                            email: user['email'] ??
+                                emailController.text.trim(),
+                            phone: user['phone'] ??
+                                mobileController.text.trim(),
                             deviceToken:
                                 await session.getDeviceToken() ?? '',
                             deviceType:
