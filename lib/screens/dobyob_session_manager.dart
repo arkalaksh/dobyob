@@ -139,4 +139,6 @@ class DobYobSessionManager {
       rethrow;
     }
   }
+
+  Future getUserSession() async {}
 }

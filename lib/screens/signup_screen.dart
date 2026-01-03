@@ -1,14 +1,16 @@
-import 'package:dobyob_1/screens/otp_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:intl_phone_field/intl_phone_field.dart';
-import 'package:dobyob_1/services/api_service.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:io' show Platform;
 
+import 'package:dobyob_1/screens/dobyob_wizard.dart';
+import 'package:dobyob_1/screens/otp_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:dobyob_1/services/api_service.dart';
+
 class SignupScreen extends StatefulWidget {
-  final String fcmToken; // ← ADD THIS
-  const SignupScreen({super.key, required this.fcmToken}); // ← UPDATE THIS
-  
+  final String fcmToken;
+  const SignupScreen({super.key, required this.fcmToken});
+
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
@@ -24,11 +26,18 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   void initState() {
     super.initState();
-    // PRINT FCM TOKEN IN DEBUG CONSOLE
+    // ignore: avoid_print
     print('SignupScreen FCM Token: ${widget.fcmToken}');
   }
 
-  // ---------- validation helpers ----------
+  @override
+  void dispose() {
+    fullNameController.dispose();
+    emailController.dispose();
+    dobController.dispose();
+    phoneController.dispose();
+    super.dispose();
+  }
 
   bool _isValidEmail(String email) {
     final trimmed = email.trim();
@@ -61,8 +70,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
     final now = DateTime.now();
     int age = now.year - date.year;
-    if (now.month < date.month ||
-        (now.month == date.month && now.day < date.day)) {
+    if (now.month < date.month || (now.month == date.month && now.day < date.day)) {
       age--;
     }
     return age >= 16;
@@ -77,99 +85,121 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _sendOtp() async {
-    final name = fullNameController.text;
-    final email = emailController.text;
-    final dob = dobController.text;
-    final phone = phoneController.text;
+    final name = fullNameController.text.trim();
+    final email = emailController.text.trim();
+    final dobLocal = dobController.text.trim(); // dd/MM/yyyy
+    final phone = phoneController.text.trim();
 
-    if (name.isEmpty || email.isEmpty || dob.isEmpty || phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
-      );
+    if (name.isEmpty || email.isEmpty || dobLocal.isEmpty || phone.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
     if (!_isValidName(name)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Name must be 3–25 letters (A–Z) only'),
-        ),
+        const SnackBar(content: Text('Name must be 3–25 letters (A–Z) only')),
       );
       return;
     }
 
     if (!_isValidEmail(email)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid .com email address'),
-        ),
+        const SnackBar(content: Text('Please enter a valid .com email address')),
       );
       return;
     }
 
-    final parsedDob = _parseDob(dob);
+    final parsedDob = _parseDob(dobLocal);
     if (parsedDob == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter DOB in dd/mm/yyyy format'),
-        ),
+        const SnackBar(content: Text('Please enter DOB in dd/mm/yyyy format')),
       );
       return;
     }
 
-    if (!_isValidAge(dob)) {
+    if (!_isValidAge(dobLocal)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You must be at least 16 years old to create account'),
-        ),
+        const SnackBar(content: Text('You must be at least 16 years old')),
       );
       return;
     }
 
-    // PASS FCM TOKEN TO API
+    final dobApi = getApiDate(dobLocal); // yyyy-MM-dd
+
     final response = await apiService.sendOtp(
-      fullName: name.trim(),
-      email: email.trim(),
-      dateOfBirth: getApiDate(dob.trim()),
-      phone: phone.trim(),
-      deviceToken: widget.fcmToken,  // ← ADD THIS
-      deviceType: Platform.isAndroid ? 'android' : 'ios',  // ← ADD THIS
+      fullName: name,
+      email: email,
+      dateOfBirth: dobApi,
+      phone: phone,
+      deviceToken: widget.fcmToken,
+      deviceType: Platform.isAndroid ? 'android' : 'ios',
     );
 
+    if (!mounted) return;
+
     if (response['success'] == true) {
-      Navigator.pushReplacement(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => OtpScreen(
-            email: email.trim(),
-            fullName: name.trim(),
-            dateOfBirth: getApiDate(dob.trim()),
-            phone: phone.trim(),
-            deviceToken: widget.fcmToken,  // ← PASS TOKEN
-            deviceType: Platform.isAndroid ? 'android' : 'ios',  // ← PASS TYPE
+            email: email,
+            fullName: name,
+            dateOfBirth: dobApi,
+            phone: phone,
+            deviceToken: widget.fcmToken,
+            deviceType: Platform.isAndroid ? 'android' : 'ios',
           ),
         ),
       );
-    } else {
-      final errorMsg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
-      
-      if (errorMsg.contains('already registered') || errorMsg.contains('Please log in')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Account already exists! Taking you to login...'),
-            backgroundColor: const Color.fromARGB(255, 11, 65, 88),
-            duration: const Duration(seconds: 2),
+
+      if (!mounted) return;
+
+      if (result is Map && result['verified'] == true) {
+        final userId = (result['userId'] ?? '').toString();
+        if (userId.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('UserId missing after OTP verification')),
+          );
+          return;
+        }
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DobYobWizard(
+              userId: userId,
+              fullName: name,
+              email: email,
+              phone: phone,
+              dateOfBirth: dobApi,
+            ),
           ),
         );
-        
+      }
+    } else {
+      final errorMsg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
+
+      if (errorMsg.contains('already registered') || errorMsg.contains('Please log in')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account already exists! Taking you to login...'),
+            backgroundColor: Color.fromARGB(255, 11, 65, 88),
+            duration: Duration(seconds: 2),
+          ),
+        );
+
         Future.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).clearSnackBars();
           Navigator.pushReplacementNamed(context, '/login');
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg)),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     }
   }
@@ -190,47 +220,31 @@ class _SignupScreenState extends State<SignupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              Center(
+              const Center(
                 child: Column(
-                  children: const [
+                  children: [
                     CircleAvatar(
                       radius: 28,
                       backgroundColor: circleColor,
-                      child: Icon(Icons.person_add_alt_1,
-                          color: Colors.white, size: 26),
+                      child: Icon(Icons.person_add_alt_1, color: Colors.white, size: 26),
                     ),
                     SizedBox(height: 10),
                     Text(
                       'Create Account',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
                     ),
                     SizedBox(height: 4),
                     Text(
                       'Join DobYob community',
-                      style: TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 20),
 
-              // Full Name
-              const Text(
-                'Full Name',
-                style: TextStyle(
-                  color: Color(0xFFD1D5DB),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              const Text('Full Name',
+                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               TextField(
                 controller: fullNameController,
@@ -249,29 +263,16 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.5,
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 14,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // Email
-              const Text(
-                'Email address',
-                style: TextStyle(
-                  color: Color(0xFFD1D5DB),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              const Text('Email address',
+                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               TextField(
                 controller: emailController,
@@ -289,45 +290,32 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.5,
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 14,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // DOB
-              const Text(
-                'Date of Birth',
-                style: TextStyle(
-                  color: Color(0xFFD1D5DB),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              const Text('Date of Birth',
+                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               TextField(
                 controller: dobController,
-                readOnly: false,
-                keyboardType: TextInputType.datetime,
+                keyboardType: TextInputType.number,
                 style: const TextStyle(color: Colors.white),
                 cursorColor: const Color(0xFF38BDF8),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(8), // ddMMyyyy
+                  DobInputFormatter(), // dd/MM/yyyy
+                ],
                 decoration: InputDecoration(
                   hintText: 'dd/mm/yyyy',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   suffixIcon: IconButton(
-                    icon: const Icon(
-                      Icons.calendar_today,
-                      color: Color(0xFF9CA3AF),
-                      size: 18,
-                    ),
+                    icon: const Icon(Icons.calendar_today, color: Color(0xFF9CA3AF), size: 18),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
@@ -337,7 +325,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       );
                       if (picked != null) {
                         dobController.text =
-                            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year.toString()}";
+                            "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
                       }
                     },
                   ),
@@ -349,29 +337,16 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.5,
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 14,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // Phone
-              const Text(
-                'Phone No',
-                style: TextStyle(
-                  color: Color(0xFFD1D5DB),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              const Text('Phone No',
+                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               IntlPhoneField(
                 controller: phoneController,
@@ -389,20 +364,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.5,
-                    ),
+                    borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 14,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                 ),
-                dropdownIcon: const Icon(
-                  Icons.arrow_drop_down,
-                  color: Color(0xFF9CA3AF),
-                ),
+                dropdownIcon: const Icon(Icons.arrow_drop_down, color: Color(0xFF9CA3AF)),
                 initialCountryCode: 'IN',
                 onChanged: (phone) {
                   phoneController.text = phone.number;
@@ -411,25 +377,18 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 20),
 
-              // Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: circleColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   onPressed: _sendOtp,
                   child: const Text(
                     'Send OTP',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
@@ -439,6 +398,27 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// ddMMyyyy digits -> dd/MM/yyyy
+class DobInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.length > 8 ? digits.substring(0, 8) : digits;
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < limited.length; i++) {
+      buffer.write(limited[i]);
+      if (i == 1 || i == 3) buffer.write('/');
+    }
+
+    final formatted = buffer.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

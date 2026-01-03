@@ -8,14 +8,14 @@ class ApiService {
   // 1. Login (Send OTP to Email): verify_email.php
   Future<Map<String, dynamic>> sendEmailOtp({
     required String email,
-    String deviceToken = '',  // ADD THIS
-    String deviceType = '',   // ADD THIS
+    String deviceToken = '',
+    String deviceType = '',
   }) async {
     final url = Uri.parse('$baseUrl/verify_email.php');
     final body = {
       "email": email,
-      "deviceToken": deviceToken,  // ADD THIS
-      "deviceType": deviceType,    // ADD THIS
+      "deviceToken": deviceToken,
+      "deviceType": deviceType,
     };
     try {
       final response = await http.post(
@@ -35,48 +35,100 @@ class ApiService {
       return {"success": false, "message": "Error: $e"};
     }
   }
-
-  // 2. Login (Verify OTP for login): loginwithotp.php
-  Future<Map<String, dynamic>> verifyLoginOtp({
-    required String email,
-    required String otp,
-    String deviceToken = '',  // ADD THIS
-    String deviceType = '',   // ADD THIS
-  }) async {
-    final url = Uri.parse('$baseUrl/loginwithotp.php');
-    final body = {
-      "email": email,
-      "otp": otp,
-      "deviceToken": deviceToken,  // ADD THIS
-      "deviceType": deviceType,    // ADD THIS
-    };
-    try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: json.encode(body),
-      );
-      if (response.statusCode == 200) {
+Future<Map<String, dynamic>> verifyLoginOtp({
+  required String email,
+  required String mpin,
+  String deviceToken = '',
+  String deviceType = '',
+}) async {
+  final url = Uri.parse('$baseUrl/login_mpin.php');  // ← login_mpin.php
+  final body = {
+    "email": email,
+    "mpin": mpin,
+    "deviceToken": deviceToken,
+    "deviceType": deviceType,
+  };
+  
+  print("🔍 MPIN LOGIN: $email + $mpin");
+  
+  try {
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: body,  // ← NO json.encode() - FORM DATA!
+    );
+    
+    print("🔍 RAW RESPONSE (${response.statusCode}): ${response.body}");
+    
+    if (response.statusCode == 200) {
+      try {
         return json.decode(response.body);
-      } else {
+      } catch (e) {
+        print("🔍 JSON ERROR: ${response.body}");
+        return {"success": false, "message": "Invalid response"};
+      }
+    } else {
+      return {"success": false, "message": "Server: ${response.statusCode}"};
+    }
+  } catch (e) {
+    return {"success": false, "message": "Network: $e"};
+  }
+}
+ // 🔥 MPIN Create/Update (OTP popup नंतर)
+Future<Map<String, dynamic>> updateMpin({
+  required String userId,
+  required String mpin,
+}) async {
+  // ✅ Path: तुमचा actual upload path match करा
+  final url = Uri.parse('$baseUrl/update_mpin.php'); // or '$baseUrl/api/update_mpin.php'
+
+  final body = {
+    "user_id": userId, // ✅ PHP expects user_id
+    "mpin": mpin,      // 6-digit plain
+  };
+
+  print("🔍 UPDATE MPIN REQUEST → $url");
+  print("🔍 BODY: $body");
+
+  try {
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: body, // Map<String, String> -> form-urlencoded [web:156]
+    );
+
+    print("🔍 UPDATE MPIN RAW (${response.statusCode}): ${response.body}");
+
+    if (response.statusCode == 200) {
+      try {
+        final decoded = jsonDecode(response.body);
+        return Map<String, dynamic>.from(decoded);
+      } catch (e) {
         return {
           "success": false,
-          "message": "Server error: ${response.statusCode}",
+          "message": "Invalid JSON from server",
+          "raw": response.body,
         };
       }
-    } catch (e) {
-      return {"success": false, "message": "Error: $e"};
+    } else {
+      return {
+        "success": false,
+        "message": "Server error: ${response.statusCode}",
+        "raw": response.body,
+      };
     }
+  } catch (e) {
+    return {"success": false, "message": "Network error: $e"};
   }
-
-  // 3. Registration (Send OTP with user info): users.php
+}
+  // 3. Registration (Send OTP with user info): request_otp.php
   Future<Map<String, dynamic>> sendOtp({
     required String fullName,
     required String email,
     required String dateOfBirth,
     required String phone,
-    String deviceToken = '',  // ADD THIS
-    String deviceType = '',   // ADD THIS
+    String deviceToken = '',
+    String deviceType = '',
   }) async {
     final url = Uri.parse('$baseUrl/request_otp.php');
     final body = {
@@ -84,8 +136,8 @@ class ApiService {
       "email": email,
       "date_of_birth": dateOfBirth,
       "phone": phone,
-      "deviceToken": deviceToken,  // ADD THIS
-      "deviceType": deviceType,    // ADD THIS
+      "deviceToken": deviceToken,
+      "deviceType": deviceType,
     };
     try {
       final response = await http.post(
@@ -145,7 +197,7 @@ class ApiService {
     }
   }
 
-  // 5. Create Post: create_post.php (multipart file/image)
+  // 5. Create Post: create_post.php
   Future<Map<String, dynamic>> createPost({
     required String userId,
     required String content,
@@ -254,7 +306,6 @@ class ApiService {
       return {"success": false, "message": "Error: $e"};
     }
   }
-
   // 8. Get Profile: profile_get.php
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     final url = Uri.parse('$baseUrl/profile_get.php?user_id=$userId');
