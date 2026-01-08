@@ -1,17 +1,19 @@
-import 'package:dobyob_1/screens/create_post_screen.dart';
-import 'package:dobyob_1/screens/dobyob_intro_screen.dart';
-import 'package:dobyob_1/screens/dobyob_session_manager.dart';
-import 'package:dobyob_1/screens/explore_app_page.dart';
-import 'package:dobyob_1/screens/invite_screen.dart';
-import 'package:dobyob_1/screens/login_screen.dart';
-import 'package:dobyob_1/screens/my_network_screen.dart';
-import 'package:dobyob_1/screens/signup_screen.dart';
-import 'package:dobyob_1/screens/feed_screen.dart';
-import 'package:dobyob_1/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+
+import 'package:dobyob_1/screens/dobyob_intro_screen.dart';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
+import 'package:dobyob_1/screens/login_screen.dart';
+import 'package:dobyob_1/screens/signup_screen.dart';
+
+import 'package:dobyob_1/screens/home_shell.dart'; // ✅ NEW
+import 'package:dobyob_1/screens/create_post_screen.dart';
+import 'package:dobyob_1/screens/profile_screen.dart';
+import 'package:dobyob_1/screens/invite_screen.dart';
+import 'package:dobyob_1/screens/my_network_screen.dart'; // file name same (class inside = NetworkScreen)
+import 'package:dobyob_1/screens/explore_app_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,11 +23,12 @@ void main() async {
   String fcmToken = '';
   try {
     fcmToken = await FirebaseMessaging.instance.getToken() ?? '';
+    // ignore: avoid_print
     print('✅ FCM Token: $fcmToken');
   } catch (e) {
-    // IMPORTANT: swallow the error so app does NOT crash
+    // ignore: avoid_print
     print('❌ FCM getToken error: $e');
-    fcmToken = ''; // continue without token
+    fcmToken = '';
   }
 
   final session = await DobYobSessionManager.getInstance();
@@ -37,8 +40,12 @@ void main() async {
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
   final String fcmToken;
-  
-  const MyApp({super.key, required this.isLoggedIn, required this.fcmToken});
+
+  const MyApp({
+    super.key,
+    required this.isLoggedIn,
+    required this.fcmToken,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -49,16 +56,26 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.yellow,
         fontFamily: 'Montserrat',
       ),
+
+      // ✅ Login नसेल तर Intro, login असेल तर HomeShell
       initialRoute: isLoggedIn ? '/home' : '/intro',
+
       routes: {
         '/intro': (context) => const DobYobIntroScreen(),
         '/login': (context) => LoginScreen(fcmToken: fcmToken),
         '/signup': (context) => SignupScreen(fcmToken: fcmToken),
-        '/home': (context) => const FeedScreen(),
+
+        // ✅ Bottom tabs container
+        '/home': (context) => const HomeShell(),
+
+        // ✅ Keep as standalone routes (fallback / direct open)
         '/addpost': (context) => const CreatePostScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/invite': (context) => const InviteScreen(),
+
+        // ✅ Option B: file = my_network_screen.dart पण class = NetworkScreen
         '/network': (context) => const NetworkScreen(),
+
         '/explore': (context) => const DobYobExploreScreen(),
       },
     );

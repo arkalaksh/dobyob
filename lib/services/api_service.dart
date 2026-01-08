@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
+import 'package:flutter/foundation.dart'; // ✅ for debugPrint
+
 class ApiService {
   static const String baseUrl = 'https://dobyob.arkalaksh.com';
 
@@ -35,92 +37,94 @@ class ApiService {
       return {"success": false, "message": "Error: $e"};
     }
   }
-Future<Map<String, dynamic>> verifyLoginOtp({
-  required String email,
-  required String mpin,
-  String deviceToken = '',
-  String deviceType = '',
-}) async {
-  final url = Uri.parse('$baseUrl/login_mpin.php');  // ← login_mpin.php
-  final body = {
-    "email": email,
-    "mpin": mpin,
-    "deviceToken": deviceToken,
-    "deviceType": deviceType,
-  };
-  
-  print("🔍 MPIN LOGIN: $email + $mpin");
-  
-  try {
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/x-www-form-urlencoded"},
-      body: body,  // ← NO json.encode() - FORM DATA!
-    );
-    
-    print("🔍 RAW RESPONSE (${response.statusCode}): ${response.body}");
-    
-    if (response.statusCode == 200) {
-      try {
-        return json.decode(response.body);
-      } catch (e) {
-        print("🔍 JSON ERROR: ${response.body}");
-        return {"success": false, "message": "Invalid response"};
+
+  Future<Map<String, dynamic>> verifyLoginOtp({
+    required String email,
+    required String mpin,
+    String deviceToken = '',
+    String deviceType = '',
+  }) async {
+    final url = Uri.parse('$baseUrl/login_mpin.php');
+    final body = {
+      "email": email,
+      "mpin": mpin,
+      "deviceToken": deviceToken,
+      "deviceType": deviceType,
+    };
+
+    print("🔍 MPIN LOGIN: $email + $mpin");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
+      );
+
+      print("🔍 RAW RESPONSE (${response.statusCode}): ${response.body}");
+
+      if (response.statusCode == 200) {
+        try {
+          return json.decode(response.body);
+        } catch (e) {
+          print("🔍 JSON ERROR: ${response.body}");
+          return {"success": false, "message": "Invalid response"};
+        }
+      } else {
+        return {"success": false, "message": "Server: ${response.statusCode}"};
       }
-    } else {
-      return {"success": false, "message": "Server: ${response.statusCode}"};
+    } catch (e) {
+      return {"success": false, "message": "Network: $e"};
     }
-  } catch (e) {
-    return {"success": false, "message": "Network: $e"};
   }
-}
- // 🔥 MPIN Create/Update (OTP popup नंतर)
-Future<Map<String, dynamic>> updateMpin({
-  required String userId,
-  required String mpin,
-}) async {
-  // ✅ Path: तुमचा actual upload path match करा
-  final url = Uri.parse('$baseUrl/update_mpin.php'); // or '$baseUrl/api/update_mpin.php'
 
-  final body = {
-    "user_id": userId, // ✅ PHP expects user_id
-    "mpin": mpin,      // 6-digit plain
-  };
+  // 🔥 MPIN Create/Update (OTP popup नंतर)
+  Future<Map<String, dynamic>> updateMpin({
+    required String userId,
+    required String mpin,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_mpin.php');
 
-  print("🔍 UPDATE MPIN REQUEST → $url");
-  print("🔍 BODY: $body");
+    final body = {
+      "user_id": userId,
+      "mpin": mpin,
+    };
 
-  try {
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/x-www-form-urlencoded"},
-      body: body, // Map<String, String> -> form-urlencoded [web:156]
-    );
+    print("🔍 UPDATE MPIN REQUEST → $url");
+    print("🔍 BODY: $body");
 
-    print("🔍 UPDATE MPIN RAW (${response.statusCode}): ${response.body}");
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
+      );
 
-    if (response.statusCode == 200) {
-      try {
-        final decoded = jsonDecode(response.body);
-        return Map<String, dynamic>.from(decoded);
-      } catch (e) {
+      print("🔍 UPDATE MPIN RAW (${response.statusCode}): ${response.body}");
+
+      if (response.statusCode == 200) {
+        try {
+          final decoded = jsonDecode(response.body);
+          return Map<String, dynamic>.from(decoded);
+        } catch (e) {
+          return {
+            "success": false,
+            "message": "Invalid JSON from server",
+            "raw": response.body,
+          };
+        }
+      } else {
         return {
           "success": false,
-          "message": "Invalid JSON from server",
+          "message": "Server error: ${response.statusCode}",
           "raw": response.body,
         };
       }
-    } else {
-      return {
-        "success": false,
-        "message": "Server error: ${response.statusCode}",
-        "raw": response.body,
-      };
+    } catch (e) {
+      return {"success": false, "message": "Network error: $e"};
     }
-  } catch (e) {
-    return {"success": false, "message": "Network error: $e"};
   }
-}
+
   // 3. Registration (Send OTP with user info): request_otp.php
   Future<Map<String, dynamic>> sendOtp({
     required String fullName,
@@ -232,80 +236,163 @@ Future<Map<String, dynamic>> updateMpin({
     }
   }
 
-  // 6. Get Posts: get_posts.php
-  Future<List<Map<String, dynamic>>> getPosts({required String userId}) async {
-    final url = Uri.parse('$baseUrl/get_posts.php?user_id=$userId');
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.cast<Map<String, dynamic>>();
-      } else {
-        return [];
+  // ApiService.dart
+Future<List<Map<String, dynamic>>> getPosts({
+  required String userId,
+  String? dob,  // ⭐ NEW: Optional DOB param
+}) async {
+  final uri = Uri.parse('$baseUrl/get_posts.php')
+      .replace(queryParameters: {
+    'user_id': userId,
+    if (dob != null) 'my_dob': dob,  // ⭐ Backend ला DOB पाठवा backup साठी
+  });
+  
+  try {
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
       }
-    } catch (e) {
-      return [];
     }
+  } catch (e) {
+    print('GetPosts error: $e');  // Debug
   }
+  return [];
+}
 
-  // 7. Profile Update: profile_update.php
-  Future<Map<String, dynamic>> updateProfile({
+  // ✅ NEW: Update Post (update_post.php) - PUT
+  Future<Map<String, dynamic>> updatePost({
+    required String postId,
     required String userId,
-    required String fullName,
-    required String business,
-    required String profession,
-    required String industry,
-    required String dateOfBirth,
-    required String email,
-    required String phone,
-    required String address,
-    required String city,
-    required String state,
-    required String country,
-    required List<String> educationList,
-    required List<String> positionsList,
-    File? profilePic,
+    required String content,
   }) async {
-    final url = Uri.parse('$baseUrl/profile_update.php');
-    var request = http.MultipartRequest('POST', url);
-
-    request.fields['user_id'] = userId;
-    request.fields['full_name'] = fullName;
-    request.fields['business'] = business;
-    request.fields['profession'] = profession;
-    request.fields['industry'] = industry;
-    request.fields['date_of_birth'] = dateOfBirth;
-    request.fields['email'] = email;
-    request.fields['phone'] = phone;
-    request.fields['address'] = address;
-    request.fields['city'] = city;
-    request.fields['state'] = state;
-    request.fields['country'] = country;
-    request.fields['education'] = jsonEncode(educationList);
-    request.fields['positions'] = jsonEncode(positionsList);
-
-    if (profilePic != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath('profile_pic', profilePic.path),
-      );
-    }
-
+    final url =
+        Uri.parse('$baseUrl/update_post.php?postId=$postId&user_id=$userId');
     try {
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"content": content}),
+      );
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        return {
-          "success": false,
-          "message": "Server error: ${response.statusCode}",
-        };
+        return Map<String, dynamic>.from(jsonDecode(response.body));
       }
+      return {
+        "success": false,
+        "message": "Server error: ${response.statusCode}",
+        "raw": response.body,
+      };
     } catch (e) {
-      return {"success": false, "message": "Error: $e"};
+      return {"success": false, "message": "Network error: $e"};
     }
   }
+
+  // ✅ NEW: Delete Post (delete_post.php) - DELETE
+  Future<Map<String, dynamic>> deletePost({
+    required String postId,
+    required String userId,
+  }) async {
+    final url =
+        Uri.parse('$baseUrl/delete_post.php?postId=$postId&user_id=$userId');
+    try {
+      final response = await http.delete(url);
+
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(response.body));
+      }
+      return {
+        "success": false,
+        "message": "Server error: ${response.statusCode}",
+        "raw": response.body,
+      };
+    } catch (e) {
+      return {"success": false, "message": "Network error: $e"};
+    }
+  }
+
+Future<Map<String, dynamic>> updateProfile({
+  required String userId,
+  required String fullName,
+  required String dateOfBirth,
+  required String email,
+  required String phone,
+
+  String? business,
+  String? profession,
+  String? industry,
+  String? address,
+  String? city,
+  String? state,
+  String? country,
+  String? about,
+  List<String>? educationList,
+  List<String>? positionsList,
+
+  File? profilePic,
+}) async {
+  final url = Uri.parse('$baseUrl/profile_update.php');
+  final request = http.MultipartRequest('POST', url); // multipart fields + files [web:39]
+
+  // Required fields
+  request.fields['user_id'] = userId;
+  request.fields['full_name'] = fullName.trim();
+  request.fields['date_of_birth'] = dateOfBirth.trim();
+  request.fields['email'] = email.trim();
+  request.fields['phone'] = phone.trim();
+
+  // Normal optionals: send only if non-empty
+  void addField(String key, String? value) {
+    final v = value?.trim();
+    if (v != null && v.isNotEmpty) request.fields[key] = v;
+  }
+
+  addField('business', business);
+  addField('profession', profession);
+  addField('industry', industry);
+  addField('city', city);
+  addField('state', state);
+  addField('country', country);
+
+  // IMPORTANT: ALWAYS send these (so PHP isset($_POST['about']) becomes true)
+  request.fields['address'] = (address ?? '').trim();
+  request.fields['about']   = (about ?? '').trim();
+
+  // Lists
+  if (educationList != null) request.fields['education'] = jsonEncode(educationList);
+  if (positionsList != null) request.fields['positions'] = jsonEncode(positionsList);
+
+  // File
+  if (profilePic != null) {
+    request.files.add(await http.MultipartFile.fromPath('profile_pic', profilePic.path));
+  }
+
+  debugPrint('updateProfile FIELDS: ${request.fields}'); // [web:289]
+
+  try {
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    debugPrint('updateProfile STATUS: ${response.statusCode}'); // [web:289]
+    debugPrint('updateProfile BODY: ${response.body}'); // [web:289]
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return {"success": false, "message": "Invalid JSON format"};
+    }
+    return {"success": false, "message": "Server error: ${response.statusCode}"};
+  } catch (e) {
+    debugPrint('updateProfile ERROR: $e'); // [web:289]
+    return {"success": false, "message": "Error: $e"};
+  }
+}
+
+
   // 8. Get Profile: profile_get.php
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     final url = Uri.parse('$baseUrl/profile_get.php?user_id=$userId');
@@ -574,7 +661,33 @@ Future<Map<String, dynamic>> updateMpin({
     } catch (e) {}
     return [];
   }
-
+Future<List<Map<String, dynamic>>> getPendingConnections(String userId) async {
+  final url = Uri.parse('$baseUrl/get_pending_connections.php?user_id=$userId');
+  
+  try {
+    print("🔍 FETCHING PENDING: $url"); // Debug log
+    
+    final response = await http.get(
+      url,
+      headers: {"Content-Type": "application/json"},
+    );
+    
+    print("🔍 PENDING STATUS: ${response.statusCode}"); // Debug
+    print("🔍 PENDING BODY: ${response.body}");         // Debug
+    
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      if (decoded["success"] == true && decoded["data"] is List) {
+        return (decoded["data"] as List)
+            .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+    }
+  } catch (e) {
+    print("🔍 PENDING ERROR: $e");
+  }
+  return [];
+}
   // E. Respond to request (accept / reject): respond_request.php
   Future<Map<String, dynamic>> respondToRequest({
     required String connectionId,
@@ -639,10 +752,10 @@ Future<Map<String, dynamic>> updateMpin({
   Future<Map<String, dynamic>?> logout({required String userId}) async {
     try {
       final response = await http.get(
-        Uri.parse('https://dobyob.arkalaksh.com/api/logout.php?user_id=$userId'),
+        Uri.parse('$baseUrl/api/logout.php?user_id=$userId'),
         headers: {'Content-Type': 'application/json'},
       );
-      
+
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
@@ -654,10 +767,11 @@ Future<Map<String, dynamic>> updateMpin({
 
   // G. Get other user's profile: user_profile.php
   Future<Map<String, dynamic>?> getUserProfile({
-    required String userId,   // profile owner id
-    required String viewerId, // logged‑in user id
+    required String userId,
+    required String viewerId,
   }) async {
-    final url = Uri.parse('$baseUrl/user_profile.php?user_id=$userId&viewer_id=$viewerId');
+    final url =
+        Uri.parse('$baseUrl/user_profile.php?user_id=$userId&viewer_id=$viewerId');
 
     try {
       final response = await http.get(
@@ -673,4 +787,90 @@ Future<Map<String, dynamic>> updateMpin({
     } catch (e) {}
     return null;
   }
+  // ✅ NEW: Cancel/Withdraw Pending Request: cancel_request.php
+  Future<Map<String, dynamic>> cancelConnectionRequest({
+    required String connectionId,
+  }) async {
+    final url = Uri.parse('$baseUrl/cancel_request.php');
+    final body = {"connection_id": connectionId};
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+          "raw": response.body,
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // ✅ NEW: Unfriend (Remove accepted connection): unfriend.php
+  Future<Map<String, dynamic>> unfriendUser({
+    required String connectionId,
+  }) async {
+    final url = Uri.parse('$baseUrl/unfriend.php');
+    final body = {"connection_id": connectionId};
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          "success": false,
+          "message": "Server error: ${response.statusCode}",
+          "raw": response.body,
+        };
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+  // API: get_people_suggestions.php?user_id=1&page=1&limit=20
+Future<Map<String, dynamic>> getPeopleSuggestionsV2({
+  required String userId,
+  int page = 1,
+  int limit = 20,
+}) async {
+  final url = Uri.parse(
+    '$baseUrl/get_people_suggestions.php?user_id=$userId&page=$page&limit=$limit',
+  );
+
+  try {
+    final response = await http.get(
+      url,
+      headers: {"Content-Type": "application/json"},
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return {
+      "success": false,
+      "message": "Server error: ${response.statusCode}",
+      "raw": response.body,
+    };
+  } catch (e) {
+    return {"success": false, "message": "Network error: $e"};
+  }
 }
+} 
+

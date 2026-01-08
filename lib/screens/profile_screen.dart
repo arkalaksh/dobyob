@@ -1,7 +1,6 @@
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
-import 'package:dobyob_1/widgets/main_bottom_nav.dart';
 import 'package:intl/intl.dart';
 import 'edit_profile_screen.dart';
 import 'connections_screen.dart';
@@ -12,20 +11,24 @@ extension StringTitleCase on String {
     if (trim().isEmpty) return '';
     return trim()
         .split(RegExp(r'\s+'))
-        .map((word) =>
-            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+        .map((word) => word.isEmpty
+            ? ''
+            : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
         .join(' ');
   }
 }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onBackToFeed;
+
+  const ProfileScreen({super.key, this.onBackToFeed});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() => ProfileScreenState(); // ✅ CHANGED
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+// ✅ CHANGED: underscore removed so HomeShell GlobalKey can access this State
+class ProfileScreenState extends State<ProfileScreen> {
   String userId = "";
   String userDob = "";
   String userName = "";
@@ -37,9 +40,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String userCountry = "";
   String userEmail = "";
   String userMobile = "";
-  String userAddress = "";          // ✅ NEW
-  String userEducation = "";        // ✅ NEW (comma string)
-  List<String> userEducationList = []; // ✅ NEW (parsed list)
+  String userAddress = "";
+  String userEducation = "";
+  List<String> userEducationList = [];
+
+  String userAbout = "";
+
   String userProfilePicUrl = "";
   int connectionsCount = 0;
 
@@ -62,7 +68,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await loadProfile();
   }
 
+  // ✅ remains public so HomeShell can call: profileKey.currentState?.loadProfile()
   Future<void> loadProfile() async {
+    // ✅ Small guard: if HomeShell calls early, ensure userId available
+    if (userId.isEmpty) {
+      final session = await DobYobSessionManager.getInstance();
+      final uidInt = await session.getUserId();
+      if (uidInt == null) return;
+      userId = uidInt.toString();
+    }
+
     setState(() => isLoading = true);
 
     final userFuture = apiService.getProfile(userId);
@@ -71,8 +86,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = await userFuture;
     final myConnections = await consFuture;
 
+    if (!mounted) return;
+
     setState(() {
       isLoading = false;
+
       if (user != null) {
         userName = user['full_name'] ?? user['name'] ?? "";
         userBusiness = user['business'] ?? "";
@@ -84,10 +102,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         userEmail = user['email'] ?? "";
         userMobile = user['phone'] ?? "";
         userDob = user['date_of_birth'] ?? "";
-        userAddress = user['address'] ?? "";            // ✅
-        userEducation = user['education'] ?? "";        // ✅
+        userAddress = user['address'] ?? "";
+        userEducation = user['education'] ?? "";
 
-        // education string -> list  ✅
+        userAbout = (user['about'] ?? "").toString();
+
         if (userEducation.trim().isNotEmpty) {
           userEducationList = userEducation
               .split(',')
@@ -98,10 +117,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           userEducationList = [];
         }
 
-        final apiCount =
-            int.tryParse(user['connections_count']?.toString() ?? '0') ?? 0;
-        final listCount = myConnections.length;
-        connectionsCount = apiCount > 0 ? apiCount : listCount;
+        // ✅ count update always from latest API
+        connectionsCount = myConnections.length;
 
         final rawPic = (user['profile_pic'] ?? "").toString();
         if (rawPic.isEmpty) {
@@ -140,11 +157,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (!mounted) return;
         Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
       }
-    } catch (e) {
+    } catch (_) {
       final session = await DobYobSessionManager.getInstance();
       await session.clearSession();
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+    }
+  }
+
+  void _handleBack() {
+    if (widget.onBackToFeed != null) {
+      widget.onBackToFeed!();
+      return;
+    }
+
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacementNamed('/home');
     }
   }
 
@@ -155,7 +186,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const borderColor = Color(0xFF1F2937);
     const accent = Color(0xFF0EA5E9);
 
-    // Country mandatory, नंतर state/city
     final location = [
       if (userCountry.isNotEmpty) userCountry,
       if (userState.isNotEmpty) userState,
@@ -170,11 +200,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: bgColor,
         elevation: 0,
+        automaticallyImplyLeading: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pushNamed(context, '/home');
-          },
+          onPressed: _handleBack,
         ),
         title: const Text(
           "Profile",
@@ -186,7 +215,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         centerTitle: false,
       ),
-      bottomNavigationBar: const MainBottomNav(currentIndex: 4),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: accent))
           : ListView(
@@ -212,8 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? NetworkImage(userProfilePicUrl)
                               : null,
                           child: (userProfilePicUrl.isEmpty)
-                              ? const Icon(Icons.person,
-                                  color: Colors.white, size: 40)
+                              ? const Icon(Icons.person, color: Colors.white, size: 40)
                               : null,
                         ),
                       ),
@@ -256,11 +283,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Name
                                     Text(
-                                      userName.isEmpty
-                                          ? "Your Name"
-                                          : userName.toTitleCase(),
+                                      userName.isEmpty ? "Your Name" : userName.toTitleCase(),
                                       style: const TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.bold,
@@ -268,7 +292,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 6),
-                                    // Profession / Role
                                     if (userProfession.isNotEmpty)
                                       Text(
                                         userProfession,
@@ -278,7 +301,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ),
                                       ),
                                     const SizedBox(height: 6),
-                                    // Country + state/city
                                     if (location.isNotEmpty)
                                       Text(
                                         location,
@@ -287,7 +309,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           color: Colors.white60,
                                         ),
                                       ),
-                                    // Mobile / Email / DOB अजिबात दाखवायचे नाहीत
                                   ],
                                 ),
                               ),
@@ -313,9 +334,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         initialDob: userDob,
                                         initialEmail: userEmail,
                                         initialMobile: userMobile,
-                                        initialAddress: userAddress,          // ✅
-                                        initialEducation: userEducation,      // ✅
-                                        initialEducationList: userEducationList, // ✅
+                                        initialAddress: userAddress,
+                                        initialAbout: userAbout,
+                                        initialEducation: userEducation,
+                                        initialEducationList: userEducationList,
                                         initialPositions: const [],
                                         initialProfilePicUrl: userProfilePicUrl,
                                       ),
@@ -329,15 +351,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
+
+                          // ✅ already correct: back from connections -> refresh count
                           GestureDetector(
-                            onTap: () {
-                              Navigator.push(
+                            onTap: () async {
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      ConnectionsScreen(userId: userId),
+                                  builder: (_) => ConnectionsScreen(userId: userId),
                                 ),
                               );
+                              await loadProfile();
                             },
                             child: Text(
                               connectionsLabel,

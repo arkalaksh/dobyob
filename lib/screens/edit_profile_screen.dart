@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:file_picker/file_picker.dart';
@@ -18,7 +19,11 @@ class EditProfileScreen extends StatefulWidget {
   final String initialEmail;
   final String initialMobile;
   final String initialAddress;
-  final String initialEducation;          // comma-separated किंवा "[]"
+
+  // ✅ ABOUT (new)
+  final String initialAbout;
+
+  final String initialEducation; // comma-separated किंवा "[]"
   final List<String> initialEducationList;
   final List<String> initialPositions;
   final String initialProfilePicUrl;
@@ -37,6 +42,10 @@ class EditProfileScreen extends StatefulWidget {
     required this.initialEmail,
     required this.initialMobile,
     required this.initialAddress,
+
+    // ✅ ABOUT (new)
+    required this.initialAbout,
+
     required this.initialEducation,
     required this.initialEducationList,
     required this.initialPositions,
@@ -63,9 +72,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController emailController;
   late TextEditingController mobileController;
 
+  // ✅ ABOUT (new)
+  late TextEditingController aboutController;
+  String? aboutError;
+  final int aboutMaxWords = 200;
+
   // education
-  final TextEditingController educationInputController =
-      TextEditingController();
+  final TextEditingController educationInputController = TextEditingController();
   List<String> educationList = [];
 
   File? selectedProfilePic;
@@ -103,6 +116,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? emailError;
   String? mobileError;
 
+  // ✅ FIX: prevent double save
+  bool _isSaving = false;
+
   bool get _isFormValid {
     return nameError == null &&
         businessError == null &&
@@ -115,6 +131,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         countryError == null &&
         emailError == null &&
         mobileError == null &&
+        aboutError == null && // ✅ ABOUT (new)
         nameController.text.trim().isNotEmpty &&
         selectedCountry.isNotEmpty &&
         selectedDate != null;
@@ -126,8 +143,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     nameController = TextEditingController(text: widget.initialName);
     businessController = TextEditingController(text: widget.initialBusiness);
-    professionController =
-        TextEditingController(text: widget.initialProfession);
+    professionController = TextEditingController(text: widget.initialProfession);
     industryController = TextEditingController(text: widget.initialIndustry);
     cityController = TextEditingController(text: widget.initialCity);
     stateController = TextEditingController(text: widget.initialState);
@@ -137,16 +153,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     emailController = TextEditingController(text: widget.initialEmail);
     mobileController = TextEditingController(text: widget.initialMobile);
 
-    // ---------- EDUCATION INIT (IMPORTANT) ----------
-    // 1) जर ProfileScreen कडून आधीच list आली असेल ती घ्या
+    // ✅ ABOUT INIT (new)
+    aboutController = TextEditingController(text: widget.initialAbout);
+
+    // ---------- EDUCATION INIT ----------
     if (widget.initialEducationList.isNotEmpty) {
       educationList = List<String>.from(widget.initialEducationList);
     } else {
-      // 2) DB मध्ये string असेल तर वापर; पण "[]" / "null" / रिकामा असेल तर ignore
       final rawEdu = widget.initialEducation.trim();
-      if (rawEdu.isNotEmpty &&
-          rawEdu != '[]' &&
-          rawEdu.toLowerCase() != 'null') {
+      if (rawEdu.isNotEmpty && rawEdu != '[]' && rawEdu.toLowerCase() != 'null') {
         educationList = rawEdu
             .split(',')
             .map((e) => e.trim())
@@ -185,6 +200,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     addressController.addListener(_validateAddress);
     emailController.addListener(_validateEmail);
     mobileController.addListener(_validateMobile);
+
+    // ✅ ABOUT listener (new)
+    aboutController.addListener(_validateAbout);
   }
 
   void _runInitialValidation() {
@@ -199,6 +217,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _validateCountry(selectedCountry);
     _validateEmail();
     _validateMobile();
+
+    // ✅ ABOUT validate (new)
+    _validateAbout();
   }
 
   @override
@@ -215,6 +236,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     emailController.dispose();
     mobileController.dispose();
     educationInputController.dispose();
+
+    // ✅ ABOUT dispose (new)
+    aboutController.dispose();
+
     super.dispose();
   }
 
@@ -315,8 +340,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() {
       if (text.isEmpty) {
         emailError = 'Email is required';
-      } else if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$')
-          .hasMatch(text)) {
+      } else if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.com$').hasMatch(text)) {
         emailError = 'Enter valid .com email address';
       } else {
         emailError = null;
@@ -348,11 +372,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
+  // ✅ ABOUT validator (new)
+  void _validateAbout() {
+    final text = aboutController.text.trim();
+    final words = text.isEmpty ? 0 : text.split(RegExp(r'\s+')).length;
+
+    setState(() {
+      if (words > aboutMaxWords) {
+        aboutError = 'Maximum $aboutMaxWords words allowed';
+      } else {
+        aboutError = null;
+      }
+    });
+  }
+
+  int _aboutWordCount() {
+    final t = aboutController.text.trim();
+    if (t.isEmpty) return 0;
+    return t.split(RegExp(r'\s+')).length;
+  }
+
   Future<void> _selectDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          selectedDate ?? DateTime.now().subtract(const Duration(days: 7300)),
+      initialDate: selectedDate ?? DateTime.now().subtract(const Duration(days: 7300)),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -368,6 +411,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       },
     );
+
     if (picked != null) {
       setState(() {
         selectedDate = picked;
@@ -381,6 +425,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       type: FileType.image,
       allowMultiple: false,
     );
+
     if (result != null && result.files.single.path != null) {
       setState(() {
         selectedProfilePic = File(result.files.single.path!);
@@ -401,8 +446,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         elevation: 0,
         centerTitle: false,
         leading: IconButton(
-          icon:
-              const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -441,10 +485,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           : (profilePicUrl.isNotEmpty
                               ? NetworkImage(profilePicUrl) as ImageProvider
                               : null),
-                      child: (selectedProfilePic == null &&
-                              profilePicUrl.isEmpty)
-                          ? const Icon(Icons.person,
-                              color: Colors.white, size: 32)
+                      child: (selectedProfilePic == null && profilePicUrl.isEmpty)
+                          ? const Icon(Icons.person, color: Colors.white, size: 32)
                           : null,
                     ),
                   ),
@@ -456,11 +498,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: const CircleAvatar(
                         radius: 14,
                         backgroundColor: Colors.black87,
-                        child: Icon(
-                          Icons.edit,
-                          size: 14,
-                          color: Colors.white,
-                        ),
+                        child: Icon(Icons.edit, size: 14, color: Colors.white),
                       ),
                     ),
                   ),
@@ -486,19 +524,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Name *",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (nameError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  nameError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(nameError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -510,10 +543,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: InputDecoration(
                 labelText: "Email *",
                 labelStyle: const TextStyle(color: Colors.white70),
-                enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: accent)),
                 errorText: emailError,
               ),
             ),
@@ -527,10 +558,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: InputDecoration(
                 labelText: "Mobile *",
                 labelStyle: const TextStyle(color: Colors.white70),
-                enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: accent)),
                 errorText: mobileError,
               ),
             ),
@@ -543,19 +572,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Business / Company",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (businessError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  businessError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(businessError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -564,25 +588,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               controller: dobController,
               readOnly: true,
               style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: "Date of Birth *",
-                labelStyle: const TextStyle(color: Colors.white70),
-                suffixIcon: const Icon(Icons.calendar_today,
-                    color: Color(0xFF0EA5E9)),
-                enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                labelStyle: TextStyle(color: Colors.white70),
+                suffixIcon: Icon(Icons.calendar_today, color: Color(0xFF0EA5E9)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
               onTap: () => _selectDate(context),
             ),
             if (dobError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  dobError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(dobError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -593,19 +611,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Profession / Role",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (professionError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  professionError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(professionError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -616,30 +629,54 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Industry",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (industryError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  industryError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(industryError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
+
+            // ✅ ABOUT YOURSELF (new)
+            const SizedBox(height: 20),
+            const Text(
+              "About yourself",
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: aboutController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              minLines: 1,
+              maxLines: 6,
+              decoration: InputDecoration(
+                labelText: "Write about yourself",
+                labelStyle: const TextStyle(color: Colors.white70),
+                enabledBorder:
+                    const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: accent)),
+                errorText: aboutError,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${_aboutWordCount()} / $aboutMaxWords words',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ),
+
             const SizedBox(height: 20),
 
             // EDUCATION SECTION
             const Text(
               "Education",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 8),
 
@@ -652,14 +689,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(
                     educationList[index],
-                    style:
-                        const TextStyle(color: Colors.white, fontSize: 14),
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.delete,
-                        size: 18, color: Colors.redAccent),
-                    onPressed: () =>
-                        setState(() => educationList.removeAt(index)),
+                    icon: const Icon(Icons.delete, size: 18, color: Colors.redAccent),
+                    onPressed: () => setState(() => educationList.removeAt(index)),
                   ),
                 ),
               ),
@@ -673,10 +707,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     decoration: const InputDecoration(
                       labelText: "Add education",
                       labelStyle: TextStyle(color: Colors.white70),
-                      enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24)),
-                      focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: accent)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
                     ),
                   ),
                 ),
@@ -691,10 +723,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       });
                     }
                   },
-                  child: const Text(
-                    'Add',
-                    style: TextStyle(color: accent),
-                  ),
+                  child: const Text('Add', style: TextStyle(color: accent)),
                 ),
               ],
             ),
@@ -702,10 +731,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             const Text(
               "Location",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 8),
 
@@ -714,29 +740,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Country *",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
               dropdownColor: bgColor,
               style: const TextStyle(color: Colors.white),
-              items: countries
-                  .map((c) =>
-                      DropdownMenuItem<String>(value: c, child: Text(c)))
-                  .toList(),
+              items: countries.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))).toList(),
               onChanged: (v) {
-                selectedCountry = v ?? '';
+                // ✅ FIX: ensure rebuild/validation
+                setState(() {
+                  selectedCountry = v ?? '';
+                });
                 _validateCountry(selectedCountry);
               },
             ),
             if (countryError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  countryError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(countryError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -746,19 +767,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "City",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (cityError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  cityError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(cityError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -768,19 +784,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "State",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (stateError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  stateError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(stateError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 12),
 
@@ -790,19 +801,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               decoration: const InputDecoration(
                 labelText: "Address",
                 labelStyle: TextStyle(color: Colors.white70),
-                enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: accent)),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: accent)),
               ),
             ),
             if (addressError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  addressError!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
+                child: Text(addressError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
             const SizedBox(height: 24),
 
@@ -810,74 +816,89 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isFormValid ? accent : Colors.grey[700],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  backgroundColor: (_isFormValid && !_isSaving) ? accent : Colors.grey[700],
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                onPressed: _isFormValid
+                onPressed: (_isFormValid && !_isSaving)
                     ? () async {
+                        setState(() => _isSaving = true);
+
                         showDialog(
                           context: context,
                           barrierDismissible: false,
-                          builder: (_) =>
-                              const Center(child: CircularProgressIndicator()),
+                          builder: (_) => const Center(child: CircularProgressIndicator()),
                         );
 
-                        String formattedDob = '';
-                        if (selectedDate != null) {
-                          formattedDob =
-                              DateFormat('yyyy-MM-dd').format(selectedDate!);
-                        }
+                        try {
+                          String formattedDob = '';
+                          if (selectedDate != null) {
+                            formattedDob = DateFormat('yyyy-MM-dd').format(selectedDate!);
+                          }
 
-                        final res = await apiService.updateProfile(
-                          userId: widget.userId,
-                          fullName: nameController.text.trim(),
-                          business: businessController.text.trim(),
-                          profession: professionController.text.trim(),
-                          industry: industryController.text.trim(),
-                          dateOfBirth: formattedDob,
-                          email: emailController.text.trim(),
-                          phone: mobileController.text.trim(),
-                          address: addressController.text.trim(),
-                          city: cityController.text.trim(),
-                          state: stateController.text.trim(),
-                          country: selectedCountry,
-                          educationList: educationList,
-                          positionsList: const [],
-                          profilePic: selectedProfilePic,
-                        );
+                          final res = await apiService.updateProfile(
+                            userId: widget.userId,
+                            fullName: nameController.text.trim(),
+                            business: businessController.text.trim(),
+                            profession: professionController.text.trim(),
+                            industry: industryController.text.trim(),
+                            dateOfBirth: formattedDob,
+                            email: emailController.text.trim(),
+                            phone: mobileController.text.trim(),
+                            address: addressController.text.trim(),
+                            city: cityController.text.trim(),
+                            state: stateController.text.trim(),
+                            country: selectedCountry,
+                            educationList: educationList,
+                            positionsList: const [],
+                            profilePic: selectedProfilePic,
 
-                        Navigator.of(context, rootNavigator: true).pop();
-
-                        if (res['success'] == true) {
-                          final user = res['user'];
-                          final session =
-                              await DobYobSessionManager.getInstance();
-
-                          await session.saveUserSession(
-                            userId: int.parse(user['id'].toString()),
-                            name: user['full_name'] ??
-                                nameController.text.trim(),
-                            email: user['email'] ??
-                                emailController.text.trim(),
-                            phone: user['phone'] ??
-                                mobileController.text.trim(),
-                            deviceToken:
-                                await session.getDeviceToken() ?? '',
-                            deviceType:
-                                await session.getDeviceType() ?? 'android',
-                            profilePicture: user['profile_pic'] ??
-                                (res['profile_pic_url'] ?? ''),
+                            // ✅ ABOUT send (new)
+                            about: aboutController.text.trim(),
                           );
 
-                          Navigator.pop(context, true);
-                        } else {
+                          // ✅ DEBUG (so you can confirm about is in response)
+                          debugPrint('updateProfile res: $res');
+
+                          Navigator.of(context, rootNavigator: true).pop();
+
+                          if (res['success'] == true) {
+                            final user = res['user'] ?? {};
+                            final session = await DobYobSessionManager.getInstance();
+
+                            final dynamic picAny = (user['profile_pic'] ?? res['profile_pic_url'] ?? '');
+                            final String newProfilePic = (picAny ?? '').toString();
+
+                            await session.saveUserSession(
+                              userId: int.parse((user['id'] ?? widget.userId).toString()),
+                              name: (user['full_name'] ?? nameController.text.trim()).toString(),
+                              email: (user['email'] ?? emailController.text.trim()).toString(),
+                              phone: (user['phone'] ?? mobileController.text.trim()).toString(),
+                              deviceToken: await session.getDeviceToken() ?? '',
+                              deviceType: await session.getDeviceType() ?? 'android',
+                              profilePicture: newProfilePic,
+                            );
+
+                            if (newProfilePic.isNotEmpty) {
+                              await session.updateProfilePicture(newProfilePic);
+                            }
+
+                            if (!mounted) return;
+                            Navigator.pop(context, true);
+                          } else {
+                            if (!mounted) return;
+                            final msg = (res['message'] ?? res['error'] ?? 'Failed to update profile!').toString();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(msg)),
+                            );
+                          }
+                        } catch (e) {
+                          Navigator.of(context, rootNavigator: true).pop();
+                          if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to update profile!'),
-                            ),
+                            SnackBar(content: Text('Error: $e')),
                           );
+                        } finally {
+                          if (mounted) setState(() => _isSaving = false);
                         }
                       }
                     : null,

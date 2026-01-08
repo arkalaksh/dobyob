@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
-import 'package:dobyob_1/widgets/main_bottom_nav.dart';
 import 'package:dobyob_1/screens/other_profile_screen.dart';
 
 extension StringTitleCase on String {
@@ -9,14 +9,16 @@ extension StringTitleCase on String {
     if (trim().isEmpty) return '';
     return trim()
         .split(RegExp(r'\s+'))
-        .map((word) =>
-            word.isEmpty ? '' : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+        .map((word) => word.isEmpty
+            ? ''
+            : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
         .join(' ');
   }
 }
 
 class NetworkScreen extends StatefulWidget {
-  const NetworkScreen({super.key});
+  final VoidCallback? onBackToFeed;
+  const NetworkScreen({super.key, this.onBackToFeed});
 
   @override
   State<NetworkScreen> createState() => _NetworkScreenState();
@@ -27,18 +29,41 @@ class _NetworkScreenState extends State<NetworkScreen>
   final ApiService _api = ApiService();
   String? myUserId;
 
-  late TabController _tabController;
+  late final TabController _tabController;
 
+  // Lists
+  bool loadingPending = true;
   bool loadingSuggestions = true;
   bool loadingRequests = true;
 
+  List<Map<String, dynamic>> pendingConnections = [];
   List<Map<String, dynamic>> suggestions = [];
   List<Map<String, dynamic>> requests = [];
+
+  // ✅ Search
+  final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+  bool searching = false;
+  List<Map<String, dynamic>> searchResults = [];
+
+  // ✅ Auto refresh timer
+  Timer? _autoRefreshTimer;
+  bool _autoRefreshing = false;
+
+  // ✅ Pagination
+  static const int _limit = 20;
+  int _page = 1;
+  bool _hasMore = true;
+  bool _loadingMore = false;
+
+  // ✅ FIX: final controller (no LateInitializationError)
+  final ScrollController _growScroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _growScroll.addListener(_onGrowScroll);
     _loadUserAndData();
   }
 
@@ -47,59 +72,193 @@ class _NetworkScreenState extends State<NetworkScreen>
     final uid = await session.getUserId();
     if (!mounted || uid == null) return;
 
-    myUserId = uid.toString();
+    setState(() => myUserId = uid.toString());
+
     await Future.wait([
-      _loadSuggestions(),
       _loadRequests(),
+      _loadPendingConnections(),
+      _loadSuggestions(reset: true),
     ]);
+
+    _startAutoRefresh();
   }
 
-  Future<void> _loadSuggestions() async {
-    if (myUserId == null) return;
-    setState(() => loadingSuggestions = true);
-    final data = await _api.getPeopleSuggestions(myUserId!);
-    if (!mounted) return;
-    setState(() {
-      suggestions = data;
-      loadingSuggestions = false;
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) async {
+      if (!mounted) return;
+      if (_autoRefreshing) return;
+      if (myUserId == null) return;
+
+      _autoRefreshing = true;
+      try {
+        await Future.wait([
+          _loadRequests(silent: true),
+          _loadPendingConnections(silent: true),
+        ]);
+
+        // suggestions refresh only if NOT searching
+        if (_searchCtrl.text.trim().length < 2) {
+          await _loadSuggestions(reset: true, silent: true);
+        }
+      } finally {
+        _autoRefreshing = false;
+      }
     });
   }
 
-  Future<void> _loadRequests() async {
+  Future<void> _refreshGrow() async {
+    await Future.wait([
+      _loadPendingConnections(),
+      _loadSuggestions(reset: true),
+      if (_searchCtrl.text.trim().length >= 2) _performSearch(_searchCtrl.text),
+    ]);
+  }
+
+  Future<void> _loadSuggestions({required bool reset, bool silent = false}) async {
     if (myUserId == null) return;
-    setState(() => loadingRequests = true);
+
+    if (!silent) {
+      setState(() => loadingSuggestions = true);
+    }
+
+    if (reset) {
+      _page = 1;
+      _hasMore = true;
+      _loadingMore = false;
+    }
+
+    final res = await _api.getPeopleSuggestionsV2(
+      userId: myUserId!,
+      page: _page,
+      limit: _limit,
+    );
+
+    if (!mounted) return;
+
+    final list = List<Map<String, dynamic>>.from(res['suggestions'] ?? []);
+    final excluded = _excludedUserIds();
+
+    final filtered = list.where((u) {
+      final id = u['id']?.toString() ?? '';
+      return id.isNotEmpty && !excluded.contains(id);
+    }).toList();
+
+    final bool serverHasMore =
+        (res['has_more'] == true) || (list.length == _limit);
+
+    setState(() {
+      if (reset) {
+        suggestions = filtered;
+      } else {
+        suggestions.addAll(filtered);
+      }
+
+      _hasMore = serverHasMore;
+      loadingSuggestions = false;
+      _loadingMore = false;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore || _loadingMore) return;
+    if (myUserId == null) return;
+
+    setState(() => _loadingMore = true);
+    _page++;
+
+    await _loadSuggestions(reset: false, silent: true);
+
+    if (!mounted) return;
+    setState(() => _loadingMore = false);
+  }
+
+  void _onGrowScroll() {
+    if (!_growScroll.hasClients) return;
+    if (_loadingMore || !_hasMore) return;
+
+    final pos = _growScroll.position;
+    if (pos.pixels >= pos.maxScrollExtent - 220) {
+      _loadMore();
+    }
+  }
+
+  Set<String> _excludedUserIds() {
+    final Set<String> ids = {};
+    if (myUserId != null) ids.add(myUserId!);
+
+    for (final p in pendingConnections) {
+      final fid = p['friend_id']?.toString() ?? '';
+      if (fid.isNotEmpty) ids.add(fid);
+    }
+
+    for (final r in requests) {
+      final sid = r['sender_id']?.toString() ?? '';
+      if (sid.isNotEmpty) ids.add(sid);
+    }
+
+    return ids;
+  }
+
+  Future<void> _loadRequests({bool silent = false}) async {
+    if (myUserId == null) return;
+    if (!silent) setState(() => loadingRequests = true);
+
     final data = await _api.getConnectionRequests(myUserId!);
     if (!mounted) return;
+
     setState(() {
       requests = data;
       loadingRequests = false;
     });
   }
 
+  Future<void> _loadPendingConnections({bool silent = false}) async {
+    if (myUserId == null) return;
+    if (!silent) setState(() => loadingPending = true);
+
+    final data = await _api.getPendingConnections(myUserId!);
+    if (!mounted) return;
+
+    setState(() {
+      pendingConnections = data;
+      loadingPending = false;
+    });
+  }
+
   void _openProfileScreen(String userId) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => OtherProfileScreen(userId: userId),
-      ),
-    );
+      MaterialPageRoute(builder: (_) => OtherProfileScreen(userId: userId)),
+    ).then((_) async {
+      if (!mounted) return;
+      await _refreshGrow();
+    });
   }
 
   Future<void> _handleConnect(String otherUserId, int index) async {
     if (myUserId == null) return;
+
     final res = await _api.sendConnectionRequest(
       senderId: myUserId!,
       receiverId: otherUserId,
     );
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(res['message']?.toString() ?? '')),
     );
 
     if (res['success'] == true) {
       setState(() {
-        suggestions.removeAt(index);
+        if (index >= 0 && index < suggestions.length) {
+          suggestions.removeAt(index);
+        }
+        searchResults.removeWhere((u) => u['id']?.toString() == otherUserId);
       });
+
+      // show in pending immediately
+      await _loadPendingConnections();
     }
   }
 
@@ -113,14 +272,102 @@ class _NetworkScreenState extends State<NetworkScreen>
       action: action,
     );
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(res['message']?.toString() ?? '')),
     );
 
     if (res['success'] == true) {
       setState(() {
-        requests.removeAt(index);
+        if (index >= 0 && index < requests.length) {
+          requests.removeAt(index);
+        }
       });
+
+      await _refreshGrow();
+    }
+  }
+
+  Future<void> _withdrawPending({
+    required int index,
+    required Map<String, dynamic> pendingRow,
+  }) async {
+    final connectionId = pendingRow['connection_id']?.toString() ?? '';
+    if (connectionId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Missing connection_id in pending list')),
+      );
+      return;
+    }
+
+    final res = await _api.cancelConnectionRequest(connectionId: connectionId);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(res['message']?.toString() ?? '')),
+    );
+
+    if (res['success'] == true) {
+      setState(() {
+        if (index >= 0 && index < pendingConnections.length) {
+          pendingConnections.removeAt(index);
+        }
+      });
+
+      await _loadSuggestions(reset: true);
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    final q = value.trim();
+    _searchDebounce?.cancel();
+
+    if (q.length < 2) {
+      setState(() {
+        searching = false;
+        searchResults.clear();
+      });
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      _performSearch(q);
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (myUserId == null) return;
+
+    setState(() => searching = true);
+
+    final data = await _api.searchUsers(
+      currentUserId: myUserId!,
+      query: query,
+    );
+    if (!mounted) return;
+
+    final excluded = _excludedUserIds();
+    final filtered = data.where((u) {
+      final id = u['id']?.toString() ?? '';
+      return id.isNotEmpty && !excluded.contains(id);
+    }).toList();
+
+    setState(() {
+      searchResults = filtered;
+      searching = false;
+    });
+  }
+
+  void _goFeed() {
+    if (widget.onBackToFeed != null) {
+      widget.onBackToFeed!();
+      return;
+    }
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+    } else {
+      nav.pushReplacementNamed('/home');
     }
   }
 
@@ -137,9 +384,10 @@ class _NetworkScreenState extends State<NetworkScreen>
         backgroundColor: bgColor,
         elevation: 0,
         toolbarHeight: 80,
+        automaticallyImplyLeading: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
+          onPressed: _goFeed,
         ),
         titleSpacing: 0,
         title: Column(
@@ -172,21 +420,36 @@ class _NetworkScreenState extends State<NetworkScreen>
                   border: Border.all(color: borderColor),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
-                    SizedBox(width: 6),
+                    const Icon(Icons.search,
+                        color: Color(0xFF6B7280), size: 20),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: TextField(
-                        style: TextStyle(fontSize: 14, color: Colors.white),
-                        decoration: InputDecoration(
+                        controller: _searchCtrl,
+                        style: const TextStyle(fontSize: 14, color: Colors.white),
+                        decoration: const InputDecoration(
                           hintText: 'Search',
                           hintStyle: TextStyle(color: Color(0xFF6B7280)),
                           border: InputBorder.none,
                           isDense: true,
                         ),
+                        onChanged: _onSearchChanged,
                       ),
                     ),
+                    if (_searchCtrl.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          _searchCtrl.clear();
+                          setState(() {
+                            searchResults.clear();
+                            searching = false;
+                          });
+                        },
+                        child: const Icon(Icons.close,
+                            color: Colors.white70, size: 18),
+                      ),
                   ],
                 ),
               ),
@@ -204,119 +467,337 @@ class _NetworkScreenState extends State<NetworkScreen>
           ],
         ),
       ),
-      bottomNavigationBar: const MainBottomNav(currentIndex: 1),
       body: myUserId == null
-          ? const Center(child: CircularProgressIndicator(color: Colors.blue))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
-                _buildSuggestionsTab(cardColor, borderColor, accent),
+                _buildGrowTab(cardColor, borderColor, accent),
                 _buildRequestsTab(cardColor, borderColor, accent),
               ],
             ),
     );
   }
 
-  // ✅ GROW TAB - Working perfectly
-  Widget _buildSuggestionsTab(Color cardColor, Color borderColor, Color accent) {
-    if (loadingSuggestions) {
+  Widget _buildGrowTab(Color cardColor, Color borderColor, Color accent) {
+    if (loadingSuggestions || loadingPending) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
       );
     }
-    if (suggestions.isEmpty) {
-      return const Center(
-        child: Text('No suggestions', style: TextStyle(color: Colors.white)),
-      );
-    }
+
+    final bool isSearchMode = _searchCtrl.text.trim().length >= 2;
+    final list = isSearchMode ? searchResults : suggestions;
+
+    final bool isEmptyAll = pendingConnections.isEmpty && list.isEmpty;
+
     return RefreshIndicator(
       color: accent,
-      onRefresh: _loadSuggestions,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: suggestions.length,
-        itemBuilder: (context, i) {
-          final u = suggestions[i];
-          final String profilePic =
-              DobYobSessionManager.resolveUrl(u['profile_pic']?.toString() ?? '');
-          final String name = (u['full_name']?.toString() ?? '').toTitleCase();
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: borderColor),
+      onRefresh: _refreshGrow,
+      child: CustomScrollView(
+        controller: _growScroll,
+        slivers: [
+          if (!isSearchMode && pendingConnections.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${pendingConnections.length} Pending',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...List.generate(
+                    pendingConnections.length,
+                    (i) => _buildPendingCard(
+                      pendingConnections[i],
+                      i,
+                      cardColor,
+                      borderColor,
+                      accent,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: InkWell(
-              onTap: () => _openProfileScreen(u['id'].toString()),
-              borderRadius: BorderRadius.circular(12),
-              child: ListTile(
-                leading: profilePic.isNotEmpty
-                    ? CircleAvatar(
-                        radius: 24,
-                        backgroundColor: accent,
-                        backgroundImage: NetworkImage(profilePic),
-                      )
-                    : CircleAvatar(
-                        radius: 24,
-                        backgroundColor: accent,
-                        child: const Icon(Icons.person, color: Colors.white),
-                      ),
-                title: Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                isSearchMode
+                    ? 'Search Results (${searchResults.length})'
+                    : 'Suggestions (${suggestions.length})',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
-                subtitle: Text(
-                  u['city']?.toString() ?? '',
-                  style: const TextStyle(color: Color(0xFF9CA3AF)),
+              ),
+            ),
+          ),
+
+          if (isSearchMode && searching)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Center(
+                  child:
+                      CircularProgressIndicator(color: Color(0xFF0EA5E9)),
                 ),
-                trailing: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  ),
-                  onPressed: () => _handleConnect(u['id'].toString(), i),
-                  child: const Text(
-                    'Connect',
-                    style: TextStyle(color: Colors.white),
+              ),
+            ),
+
+          if (isEmptyAll)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'No suggestions right now.',
+                    style: TextStyle(color: Colors.white70),
                   ),
                 ),
               ),
             ),
-          );
-        },
+
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                if (i >= list.length) {
+                  if (!isSearchMode && _loadingMore) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF0EA5E9)),
+                      ),
+                    );
+                  }
+                  return null;
+                }
+
+                return _buildSuggestionCard(
+                  list[i],
+                  i,
+                  cardColor,
+                  borderColor,
+                  accent,
+                );
+              },
+              childCount: list.length + ((!isSearchMode && _loadingMore) ? 1 : 0),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // ✅ REQUESTS TAB - FULLY FIXED WITH ACTION BUTTONS
+  // ✅ UPDATED: keep name/city in single line properly
+  Widget _buildPendingCard(
+    Map<String, dynamic> p,
+    int index,
+    Color cardColor,
+    Color borderColor,
+    Color accent,
+  ) {
+    final String profilePic =
+        DobYobSessionManager.resolveUrl(p['profile_pic']?.toString() ?? '');
+    final String name = (p['full_name']?.toString() ?? '').toTitleCase();
+    final String friendId = p['friend_id']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: InkWell(
+        onTap: friendId.isNotEmpty ? () => _openProfileScreen(friendId) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: profilePic.isNotEmpty
+              ? CircleAvatar(
+                  radius: 24,
+                  backgroundColor: accent,
+                  backgroundImage: NetworkImage(profilePic),
+                )
+              : CircleAvatar(
+                  radius: 24,
+                  backgroundColor: accent,
+                  child: const Icon(Icons.person, color: Colors.white),
+                ),
+          title: Text(
+            name,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            p['city']?.toString() ?? '',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xFF9CA3AF)),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () => _withdrawPending(index: index, pendingRow: p),
+                icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  shape: const CircleBorder(),
+                  padding: const EdgeInsets.all(6),
+                ),
+                tooltip: 'Withdraw',
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.hourglass_empty,
+                        size: 16, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('Pending',
+                        style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ UPDATED: keep name/city in single line properly
+  Widget _buildSuggestionCard(
+    Map<String, dynamic> u,
+    int index,
+    Color cardColor,
+    Color borderColor,
+    Color accent,
+  ) {
+    final String profilePic =
+        DobYobSessionManager.resolveUrl(u['profile_pic']?.toString() ?? '');
+    final String name = (u['full_name']?.toString() ?? '').toTitleCase();
+    final String id = u['id']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: InkWell(
+        onTap: id.isNotEmpty ? () => _openProfileScreen(id) : null,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: profilePic.isNotEmpty
+              ? CircleAvatar(
+                  radius: 24,
+                  backgroundColor: accent,
+                  backgroundImage: NetworkImage(profilePic),
+                )
+              : CircleAvatar(
+                  radius: 24,
+                  backgroundColor: accent,
+                  child: const Icon(Icons.person, color: Colors.white),
+                ),
+          title: Text(
+            name,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            u['city']?.toString() ?? '',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xFF9CA3AF)),
+          ),
+          trailing: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            ),
+            onPressed: id.isEmpty ? null : () => _handleConnect(id, index),
+            child: const Text('Connect', style: TextStyle(color: Colors.white)),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRequestsTab(Color cardColor, Color borderColor, Color accent) {
     if (loadingRequests) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
       );
     }
+
     if (requests.isEmpty) {
       return const Center(
         child: Text('No requests', style: TextStyle(color: Colors.white)),
       );
     }
+
     return RefreshIndicator(
       color: accent,
-      onRefresh: _loadRequests,
+      onRefresh: () => _loadRequests(),
       child: ListView.builder(
         padding: const EdgeInsets.all(12),
         itemCount: requests.length,
         itemBuilder: (context, i) {
           final r = requests[i];
-          final String profilePic =
-              DobYobSessionManager.resolveUrl(r['profile_pic']?.toString() ?? '');
-          final String senderId = r['sender_id']?.toString() ?? ''; // ✅ API मधील sender_id
-          final String connectionId = r['connection_id']?.toString() ?? ''; // ✅ API मधील connection_id
+          final String profilePic = DobYobSessionManager.resolveUrl(
+            r['profile_pic']?.toString() ?? '',
+          );
+
+          final String senderId = r['sender_id']?.toString() ?? '';
+          final String connectionId = r['connection_id']?.toString() ?? '';
           final String name = (r['full_name']?.toString() ?? '').toTitleCase();
 
           return Container(
@@ -333,7 +814,6 @@ class _NetworkScreenState extends State<NetworkScreen>
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    // Profile Section - 80% width
                     Expanded(
                       child: Row(
                         children: [
@@ -351,7 +831,6 @@ class _NetworkScreenState extends State<NetworkScreen>
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
                                   name,
@@ -376,11 +855,9 @@ class _NetworkScreenState extends State<NetworkScreen>
                         ],
                       ),
                     ),
-                    // Action Buttons - Right side
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Reject Button
                         IconButton(
                           onPressed: connectionId.isNotEmpty
                               ? () => _handleRequestAction(
@@ -395,10 +872,8 @@ class _NetworkScreenState extends State<NetworkScreen>
                             shape: const CircleBorder(),
                             padding: const EdgeInsets.all(6),
                           ),
-                          tooltip: 'Reject',
                         ),
                         const SizedBox(width: 8),
-                        // Accept Button
                         IconButton(
                           onPressed: connectionId.isNotEmpty
                               ? () => _handleRequestAction(
@@ -413,7 +888,6 @@ class _NetworkScreenState extends State<NetworkScreen>
                             shape: const CircleBorder(),
                             padding: const EdgeInsets.all(6),
                           ),
-                          tooltip: 'Accept',
                         ),
                       ],
                     ),
@@ -429,6 +903,10 @@ class _NetworkScreenState extends State<NetworkScreen>
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    _growScroll.dispose();
     _tabController.dispose();
     super.dispose();
   }

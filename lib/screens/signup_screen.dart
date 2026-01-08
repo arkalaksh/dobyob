@@ -280,7 +280,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 cursorColor: const Color(0xFF38BDF8),
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: 'Enter your email (.com only)',
+                  hintText: 'Enter your email ',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   filled: true,
                   fillColor: fieldColor,
@@ -312,7 +312,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   DobInputFormatter(), // dd/MM/yyyy
                 ],
                 decoration: InputDecoration(
-                  hintText: 'dd/mm/yyyy',
+                  hintText: 'DD/MM/YYYY',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.calendar_today, color: Color(0xFF9CA3AF), size: 18),
@@ -345,7 +345,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 12),
 
-              const Text('Phone No',
+              const Text('Phone number',
                   style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               IntlPhoneField(
@@ -402,23 +402,54 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 }
 
-/// ddMMyyyy digits -> dd/MM/yyyy
+/// ddMMyyyy digits -> dd/MM/yyyy (cursor + backspace friendly)
 class DobInputFormatter extends TextInputFormatter {
+  static const int _maxDigits = 8;
+
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final limited = digits.length > 8 ? digits.substring(0, 8) : digits;
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final rawText = newValue.text;
+    final rawSelection = newValue.selection.end;
 
-    final buffer = StringBuffer();
-    for (int i = 0; i < limited.length; i++) {
-      buffer.write(limited[i]);
-      if (i == 1 || i == 3) buffer.write('/');
-    }
+    // Digits count before cursor (in whatever user has typed so far)
+    final safeSel = rawSelection.clamp(0, rawText.length);
+    final digitsBeforeCursor = _countDigits(rawText.substring(0, safeSel));
 
-    final formatted = buffer.toString();
+    // Keep only digits + limit to 8 digits (ddMMyyyy)
+    final digits = rawText.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.length > _maxDigits ? digits.substring(0, _maxDigits) : digits;
+
+    final formatted = _format(limited);
+
+    // Map cursor back based on how many digits were before cursor
+    final db = digitsBeforeCursor.clamp(0, limited.length);
+    final newCursor = _cursorForDigitIndex(db).clamp(0, formatted.length);
+
     return TextEditingValue(
       text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
+      selection: TextSelection.collapsed(offset: newCursor),
     );
+  }
+
+  int _countDigits(String s) => RegExp(r'\d').allMatches(s).length;
+
+  String _format(String d) {
+    final b = StringBuffer();
+    for (int i = 0; i < d.length; i++) {
+      b.write(d[i]);
+      if (i == 1 && d.length > 2) b.write('/');
+      if (i == 3 && d.length > 4) b.write('/');
+    }
+    return b.toString();
+  }
+
+  // digitsBefore: 0..8  => cursor position in "dd/MM/yyyy"
+  int _cursorForDigitIndex(int digitsBefore) {
+    if (digitsBefore <= 2) return digitsBefore;         // dd
+    if (digitsBefore <= 4) return digitsBefore + 1;     // dd/MM (one slash)
+    return digitsBefore + 2;                            // dd/MM/yyyy (two slashes)
   }
 }

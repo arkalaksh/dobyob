@@ -11,6 +11,10 @@ class DobYobSessionManager {
   // BASE URL (absolute path generation साठी)
   static const String BASE_URL = "https://dobyob.arkalaksh.com/";
 
+  // ✅ NEW: profile pic update झालं की app मधल्या इतर screens ला signal देण्यासाठी
+  // value change -> listeners trigger
+  static final ValueNotifier<int> profilePicVersion = ValueNotifier<int>(0);
+
   // Convert relative path → absolute URL
   static String resolveUrl(String? path) {
     if (path == null || path.trim().isEmpty) return "";
@@ -23,6 +27,10 @@ class DobYobSessionManager {
     _instance ??= DobYobSessionManager._internal();
     _prefs ??= await SharedPreferences.getInstance();
     return _instance!;
+  }
+
+  Future<void> _ensurePrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
   }
 
   // Keys
@@ -45,6 +53,8 @@ class DobYobSessionManager {
     required String deviceType,
     String? profilePicture,
   }) async {
+    await _ensurePrefs();
+
     try {
       await Future.wait([
         _prefs!.setInt(_keyUserId, userId),
@@ -59,13 +69,18 @@ class DobYobSessionManager {
       if (profilePicture != null && profilePicture.isNotEmpty) {
         final fullUrl = resolveUrl(profilePicture);
         await _prefs!.setString(_keyProfilePicture, fullUrl);
+
+        // ✅ NEW: session save मध्ये pic set होत असेल तर पण notify
+        profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
       }
 
       if (kDebugMode) {
+        // ignore: avoid_print
         print('✅ DobYob session saved for: $name');
       }
     } catch (e) {
       if (kDebugMode) {
+        // ignore: avoid_print
         print('❌ Error saving DobYob session: $e');
       }
       rethrow;
@@ -73,7 +88,6 @@ class DobYobSessionManager {
   }
 
   // -------- Getters --------
-
   Future<bool> isLoggedIn() async => _prefs?.getBool(_keyIsLoggedIn) ?? false;
 
   Future<int?> getUserId() async => _prefs?.getInt(_keyUserId);
@@ -84,14 +98,11 @@ class DobYobSessionManager {
 
   Future<String?> getPhone() async => _prefs?.getString(_keyPhone);
 
-  Future<String?> getDeviceToken() async =>
-      _prefs?.getString(_keyDeviceToken);
+  Future<String?> getDeviceToken() async => _prefs?.getString(_keyDeviceToken);
 
-  Future<String?> getDeviceType() async =>
-      _prefs?.getString(_keyDeviceType);
+  Future<String?> getDeviceType() async => _prefs?.getString(_keyDeviceType);
 
-  Future<String?> getProfilePicture() async =>
-      _prefs?.getString(_keyProfilePicture);
+  Future<String?> getProfilePicture() async => _prefs?.getString(_keyProfilePicture);
 
   Future<Map<String, dynamic>> getUserData() async => {
         'user_id': await getUserId(),
@@ -105,19 +116,25 @@ class DobYobSessionManager {
       };
 
   // -------- Updates --------
-
   Future<void> updateUserName(String name) async {
+    await _ensurePrefs();
     await _prefs!.setString(_keyUserName, name);
   }
 
   Future<void> updateProfilePicture(String url) async {
+    await _ensurePrefs();
+
     final fullUrl = resolveUrl(url);
     await _prefs!.setString(_keyProfilePicture, fullUrl);
+
+    // ✅ NEW: हाच मुख्य change — feed/other screens ला लगेच कळेल
+    profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
   }
 
   // -------- Logout / Clear --------
-
   Future<void> clearSession() async {
+    await _ensurePrefs();
+
     try {
       await Future.wait([
         _prefs!.remove(_keyUserId),
@@ -129,11 +146,17 @@ class DobYobSessionManager {
         _prefs!.remove(_keyProfilePicture),
         _prefs!.setBool(_keyIsLoggedIn, false),
       ]);
+
+      // ✅ optional: reset notifier
+      profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
+
       if (kDebugMode) {
+        // ignore: avoid_print
         print('✅ DobYob session cleared');
       }
     } catch (e) {
       if (kDebugMode) {
+        // ignore: avoid_print
         print('❌ Error clearing DobYob session: $e');
       }
       rethrow;

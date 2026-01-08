@@ -1,11 +1,12 @@
+import 'dart:io';
+
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/services/api_service.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 class DobYobWizard extends StatefulWidget {
   final String userId;
-
-  // ✅ Signup मधून आलेले basics
   final String fullName;
   final String email;
   final String phone;
@@ -28,23 +29,7 @@ class _DobYobWizardState extends State<DobYobWizard> {
   final ApiService apiService = ApiService();
   DobYobSessionManager? _session;
 
-  // Slide 1 (Work)
-  final TextEditingController businessController = TextEditingController();
-  final TextEditingController professionController = TextEditingController();
-  final TextEditingController industryController = TextEditingController();
-
-  // Slide 2 (Location)
-  String selectedCountry = '';
-  final TextEditingController stateController = TextEditingController();
-  final TextEditingController cityController = TextEditingController();
-  final TextEditingController addressController = TextEditingController();
-
-  // Slide 2 (Education)
-  List<String> educationList = [];
-  final TextEditingController educationInputController = TextEditingController();
-
-  String? countryError;
-
+  // COLORS (Bluesky style)
   static const _bg = Color(0xFF020617);
   static const _accent = Color(0xFF0EA5E9);
   static const _fieldFill = Color(0xFF0B1220);
@@ -54,25 +39,54 @@ class _DobYobWizardState extends State<DobYobWizard> {
   int _currentPage = 0;
   bool _isLoading = false;
 
-  final List<String> countries = ['India', 'USA', 'UK', 'Canada', 'Others'];
+  // Step‑1 (Profile + Location)
+  File? selectedProfilePic;
+  String profilePicUrl = "";
+  String selectedCountry = '';
+  final TextEditingController cityController = TextEditingController();
 
-  bool get _isSlide2Valid => selectedCountry.isNotEmpty;
+  final List<String> countries = const [
+    'India',
+    'USA',
+    'UK',
+    'Canada',
+    'Australia',
+    'Germany',
+    'France',
+    'Japan',
+    'China',
+    'Brazil',
+    'Russia',
+    'South Africa',
+    'UAE',
+    'Singapore',
+    'Others'
+  ];
+
+  // Step‑2 (Work)
+  String selectedWorkType = '';
+  final TextEditingController companyController = TextEditingController();
+  final TextEditingController designationController = TextEditingController();
+
+  // Step‑3 (About)
+  final TextEditingController aboutController = TextEditingController();
+  final int aboutMaxWords = 200;
+
+  // errors (Finish validation साठी)
+  String? countryError;
+  String? cityError;
+  String? workTypeError;
+  String? aboutError;
 
   @override
   void initState() {
     super.initState();
     _initSession();
-    _validateCountry(selectedCountry);
   }
 
   Future<void> _initSession() async {
     _session = await DobYobSessionManager.getInstance();
     if (mounted) setState(() {});
-  }
-
-  void _validateCountry(String value) {
-    if (!mounted) return;
-    setState(() => countryError = value.isEmpty ? 'Country required' : null);
   }
 
   void _snack(String msg) {
@@ -107,20 +121,89 @@ class _DobYobWizardState extends State<DobYobWizard> {
     );
   }
 
-  Future<void> _saveAll() async {
-    if (_isLoading) return;
+  // ---------- helpers ----------
+  String? _opt(String? v) {
+    final t = (v ?? '').trim();
+    return t.isEmpty ? null : t;
+  }
 
-    if (widget.fullName.trim().isEmpty ||
-        widget.email.trim().isEmpty ||
-        widget.phone.trim().isEmpty ||
-        widget.dateOfBirth.trim().isEmpty) {
-      _snack('Signup data missing (name/email/phone/dob).');
-      return;
+  String? _optCtrl(TextEditingController c) => _opt(c.text);
+
+  bool _hasAnythingToSave() {
+    return selectedProfilePic != null ||
+        _opt(selectedCountry) != null ||
+        _optCtrl(cityController) != null ||
+        _opt(selectedWorkType) != null ||
+        _optCtrl(companyController) != null ||
+        _optCtrl(designationController) != null ||
+        _optCtrl(aboutController) != null;
+  }
+
+  bool _hasStep1ToSave() {
+    return selectedProfilePic != null ||
+        _opt(selectedCountry) != null ||
+        _optCtrl(cityController) != null;
+  }
+
+  bool _hasStep2ToSave() {
+    return _opt(selectedWorkType) != null ||
+        _optCtrl(companyController) != null ||
+        _optCtrl(designationController) != null;
+  }
+  // ----------------------------
+
+  // Finish validation (optional)
+  bool _validateStep1ForFinish() {
+    countryError = selectedCountry.trim().isEmpty ? 'Country required' : null;
+    cityError = cityController.text.trim().isEmpty ? 'City required' : null;
+    if (mounted) setState(() {});
+    return countryError == null && cityError == null;
+  }
+
+  bool _validateStep2ForFinish() {
+    workTypeError = selectedWorkType.isEmpty ? 'This field is required' : null;
+    if (mounted) setState(() {});
+    return workTypeError == null;
+  }
+
+  bool _validateStep3ForFinish() {
+    final text = aboutController.text.trim();
+    final words = text.isEmpty ? 0 : text.split(RegExp(r'\s+')).length;
+    aboutError = (words > aboutMaxWords) ? 'Maximum $aboutMaxWords words allowed' : null;
+    if (mounted) setState(() {});
+    return aboutError == null;
+  }
+
+  Future<void> _pickImageWithFilePicker() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        selectedProfilePic = File(result.files.single.path!);
+        profilePicUrl = "";
+      });
     }
+  }
 
-    if (!_isSlide2Valid) {
-      _validateCountry(selectedCountry);
-      return;
+  // ✅ core saver (send only filled fields)
+  Future<bool> _savePartial({
+    String? onlyCountry,
+    String? onlyCity,
+    String? onlyBusiness,
+    String? onlyIndustry,
+    String? onlyProfession,
+    String? onlyAbout,
+    File? onlyProfilePic,
+    bool showToast = true,
+  }) async {
+    if (_isLoading) return false;
+
+    if (!_hasAnythingToSave()) {
+      if (showToast) _snack('Nothing to save');
+      return false;
     }
 
     setState(() => _isLoading = true);
@@ -133,28 +216,42 @@ class _DobYobWizardState extends State<DobYobWizard> {
 
     final res = await apiService.updateProfile(
       userId: widget.userId,
+
+      // critical
       fullName: widget.fullName.trim(),
-      business: businessController.text.trim(),
-      profession: professionController.text.trim(),
-      industry: industryController.text.trim(),
-      dateOfBirth: widget.dateOfBirth.trim(),
       email: widget.email.trim(),
       phone: widget.phone.trim(),
-      address: addressController.text.trim(),
-      city: cityController.text.trim(),
-      state: stateController.text.trim(),
-      country: selectedCountry,
-      educationList: educationList,
-      positionsList: const <String>[],
-      profilePic: null,
+      dateOfBirth: widget.dateOfBirth.trim(),
+
+      // optional (only what we pass here)
+      country: _opt(onlyCountry),
+      city: _opt(onlyCity),
+      business: _opt(onlyBusiness),
+      industry: _opt(onlyIndustry),
+      profession: _opt(onlyProfession),
+      about: _opt(onlyAbout),
+
+      // do not touch these in wizard partial
+      address: null,
+      state: null,
+      educationList: null,
+      positionsList: null,
+
+      profilePic: onlyProfilePic,
     );
 
     Navigator.of(context, rootNavigator: true).pop();
 
+    bool ok = false;
+
     if (res['success'] == true) {
+      ok = true;
       final user = res['user'] ?? {};
       try {
         final session = _session ?? await DobYobSessionManager.getInstance();
+        final newPicUrl =
+            (user['profile_pic'] ?? res['profile_pic_url'] ?? '').toString();
+
         await session.saveUserSession(
           userId: int.tryParse((user['id'] ?? widget.userId).toString()) ?? 0,
           name: (user['full_name'] ?? widget.fullName).toString(),
@@ -162,98 +259,242 @@ class _DobYobWizardState extends State<DobYobWizard> {
           phone: (user['phone'] ?? widget.phone).toString(),
           deviceToken: await session.getDeviceToken() ?? '',
           deviceType: await session.getDeviceType() ?? 'android',
-          profilePicture: (user['profile_pic'] ?? '').toString(),
+          profilePicture: newPicUrl,
         );
+
+        if (newPicUrl.isNotEmpty) {
+          await session.updateProfilePicture(newPicUrl);
+        }
       } catch (_) {}
-      if (mounted) _snack('Profile Updated!');
+
+      if (showToast && mounted) _snack('Saved');
     } else {
       if (mounted) _snack((res['message'] ?? 'Update failed').toString());
     }
 
     if (mounted) setState(() => _isLoading = false);
+    return ok;
   }
 
-  Widget _saveButton() => SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _accent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-          onPressed: _isLoading ? null : _saveAll,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Text(
-                  'Save',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                ),
-        ),
+  // ✅ Step 1 -> if nothing filled, allow next without save
+  Future<void> _saveAndNextStep1() async {
+    if (!_hasStep1ToSave()) {
+      _next();
+      return;
+    }
+
+    final ok = await _savePartial(
+      onlyCountry: selectedCountry,
+      onlyCity: cityController.text,
+      onlyProfilePic: selectedProfilePic,
+    );
+
+    if (!mounted) return;
+    if (ok) _next();
+  }
+
+  // ✅ Step 2 -> if nothing filled, allow next without save
+  Future<void> _saveAndNextStep2() async {
+    if (!_hasStep2ToSave()) {
+      _next();
+      return;
+    }
+
+    final ok = await _savePartial(
+      onlyBusiness: selectedWorkType,
+      onlyIndustry: companyController.text,
+      onlyProfession: designationController.text,
+    );
+
+    if (!mounted) return;
+    if (ok) _next();
+  }
+
+  // ✅ Save only (third step - no next) (kept as-is)
+  Future<void> _saveStep3() async {
+    _validateStep3ForFinish();
+    if (aboutError != null) return;
+
+    await _savePartial(
+      onlyAbout: aboutController.text,
+    );
+  }
+
+  // ✅ Finish (ONLY Step-3 About) + home redirect
+  Future<void> _finish() async {
+    // only validate step-3 (word limit)
+    _validateStep3ForFinish();
+    if (aboutError != null) return;
+
+    final aboutText = aboutController.text.trim();
+
+    // if nothing written -> directly home
+    if (aboutText.isEmpty) {
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/home');
+      return;
+    }
+
+    // save only about
+    final ok = await _savePartial(
+      onlyAbout: aboutText,
+      showToast: false,
+    );
+
+    if (!mounted) return;
+    if (ok) Navigator.pushReplacementNamed(context, '/home');
+  }
+
+  // Skip = go home (no save - shows filled info but doesn't save)
+  void _skip() {
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/home');
+  }
+
+  void _next() {
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _previous() => _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
       );
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
       backgroundColor: _bg,
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: _bg,
-        title: const Text('Complete Profile', style: TextStyle(color: Colors.white)),
+        elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Step ${_currentPage + 1} of 3',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Your profile',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: _skip,
             child: const Text('Skip', style: TextStyle(color: _accent)),
-          )
+          ),
         ],
       ),
+
+      // Buttons fixed at bottom (safe)
+      bottomNavigationBar: Container(
+        color: _bg,
+        padding: EdgeInsets.only(bottom: bottomSafe + 10),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _currentPage > 0 ? _previous : null,
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: _currentPage > 0
+                          ? Colors.white54
+                          : Colors.grey.shade700,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Back',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        !_isLoading ? _accent : Colors.grey.shade600,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          if (_currentPage == 0) {
+                            _saveAndNextStep1();
+                          } else if (_currentPage == 1) {
+                            _saveAndNextStep2();
+                          } else if (_currentPage == 2) {
+                            _finish(); // ✅ ONLY about save + home
+                          }
+                        },
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          _currentPage == 2 ? 'Finish' : 'Next',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
       body: Column(
         children: [
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'You are creating your profile on DobYob.',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           LinearProgressIndicator(
-            value: (_currentPage + 1) / 2.0,
-            backgroundColor: Colors.grey,
+            value: (_currentPage + 1) / 3.0,
+            backgroundColor: Colors.grey.shade800,
             valueColor: const AlwaysStoppedAnimation(_accent),
+            minHeight: 3,
           ),
           Expanded(
             child: PageView(
               controller: _pageController,
               onPageChanged: (i) => setState(() => _currentPage = i),
-              children: [_buildWorkSlide(), _buildLocationEduSlide()],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+              physics: const NeverScrollableScrollPhysics(),
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _currentPage > 0 ? _previous : null,
-                    child: const Text('Back'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: !_isLoading ? _accent : Colors.grey,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _isLoading ? null : _next,
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation(Colors.white),
-                            ),
-                          )
-                        : Text(_currentPage == 1 ? 'Finish' : 'Next'),
-                  ),
-                ),
+                _buildStep1(),
+                _buildStep2(),
+                _buildStep3(),
               ],
             ),
           ),
@@ -262,165 +503,181 @@ class _DobYobWizardState extends State<DobYobWizard> {
     );
   }
 
-  // Slide 1 = Work
-  Widget _buildWorkSlide() => ListView(
+  // STEP 1 - NO SAVE BUTTON
+  Widget _buildStep1() => ListView(
         padding: const EdgeInsets.all(20),
         children: [
           const Text(
-            'Work',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+            'Your profile',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: businessController,
-            style: const TextStyle(color: Colors.white),
-            decoration: _deco('Business / Company'),
+          Center(
+            child: Stack(
+              children: [
+                GestureDetector(
+                  onTap: _pickImageWithFilePicker,
+                  child: CircleAvatar(
+                    radius: 40,
+                    backgroundColor: _accent.withOpacity(0.2),
+                    backgroundImage: selectedProfilePic != null
+                        ? FileImage(selectedProfilePic!)
+                        : (profilePicUrl.isNotEmpty
+                            ? NetworkImage(profilePicUrl) as ImageProvider
+                            : null),
+                    child: (selectedProfilePic == null &&
+                            profilePicUrl.isEmpty)
+                        ? const Icon(Icons.person,
+                            color: Colors.white, size: 32)
+                        : null,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: GestureDetector(
+                    onTap: _pickImageWithFilePicker,
+                    child: const CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Colors.black87,
+                      child:
+                          Icon(Icons.edit, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: professionController,
-            style: const TextStyle(color: Colors.white),
-            decoration: _deco('Profession / Role'),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: industryController,
-            style: const TextStyle(color: Colors.white),
-            decoration: _deco('Industry'),
-          ),
-        ],
-      );
-
-  // Slide 2 = Location + Education
-  Widget _buildLocationEduSlide() => ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Location & Education',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 16),
-
+          const SizedBox(height: 20),
           DropdownButtonFormField<String>(
             value: selectedCountry.isEmpty ? null : selectedCountry,
             decoration: _deco('Country *', errorText: countryError),
             dropdownColor: _bg,
             style: const TextStyle(color: Colors.white),
-            items: countries.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            items: countries
+                .map((c) => DropdownMenuItem<String>(
+                      value: c,
+                      child: Text(c),
+                    ))
+                .toList(),
             onChanged: (v) {
-              selectedCountry = v ?? '';
-              _validateCountry(selectedCountry);
+              setState(() {
+                selectedCountry = v ?? '';
+                countryError = null;
+              });
             },
           ),
           const SizedBox(height: 14),
-
-          TextField(
-            controller: stateController,
-            style: const TextStyle(color: Colors.white),
-            decoration: _deco('State'),
-          ),
-          const SizedBox(height: 14),
-
           TextField(
             controller: cityController,
             style: const TextStyle(color: Colors.white),
-            decoration: _deco('City'),
+            decoration: _deco('City', errorText: cityError),
           ),
-          const SizedBox(height: 14),
-
-          // ✅ Address boxed multi-line (single clean border)
-          TextField(
-            controller: addressController,
-            style: const TextStyle(color: Colors.white),
-            keyboardType: TextInputType.streetAddress,
-            textInputAction: TextInputAction.newline,
-            minLines: 2,
-            maxLines: 3,
-            decoration: _deco('Address'),
-          ),
-
-          const SizedBox(height: 22),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 10),
-
-          const Text(
-            'Education',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-          ),
-          const SizedBox(height: 10),
-
-          if (educationList.isNotEmpty)
-            ...educationList.map(
-              (e) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(e, style: const TextStyle(color: Colors.white)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => setState(() => educationList.remove(e)),
-                ),
-              ),
-            ),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: educationInputController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _deco('Add Education'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () {
-                  final text = educationInputController.text.trim();
-                  if (text.isNotEmpty) {
-                    setState(() {
-                      educationList.add(text);
-                      educationInputController.clear();
-                    });
-                  }
-                },
-                child: const Text('Add', style: TextStyle(color: _accent)),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-          _saveButton(),
         ],
       );
 
-  void _next() {
-    if (_currentPage == 0) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+  // STEP 2 - NO SAVE BUTTON
+  Widget _buildStep2() => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Text(
+            'Work',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: selectedWorkType.isEmpty ? null : selectedWorkType,
+            decoration: _deco(
+              'Business/professional/student/homemaker',
+              errorText: workTypeError,
+            ),
+            dropdownColor: _bg,
+            style: const TextStyle(color: Colors.white),
+            items: const <DropdownMenuItem<String>>[
+              DropdownMenuItem(value: 'Business', child: Text('Business')),
+              DropdownMenuItem(
+                  value: 'Professional', child: Text('Professional')),
+              DropdownMenuItem(value: 'Student', child: Text('Student')),
+              DropdownMenuItem(value: 'Homemaker', child: Text('Homemaker')),
+            ],
+            onChanged: (v) => setState(() {
+              selectedWorkType = v ?? '';
+              workTypeError = null;
+            }),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: companyController,
+            style: const TextStyle(color: Colors.white),
+            decoration: _deco('Name of company/college/institution'),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: designationController,
+            style: const TextStyle(color: Colors.white),
+            decoration: _deco('Designation'),
+          ),
+        ],
       );
-    } else {
-      _saveAll().then((_) {
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/home');
-      });
-    }
+
+  // STEP 3 - NO BOTTOM BUTTON (Finish is in bottomNavigationBar)
+  Widget _buildStep3() {
+    final text = aboutController.text.trim();
+    final words = text.isEmpty ? 0 : text.split(RegExp(r'\s+')).length;
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Describe yourself',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Max $aboutMaxWords words. This will appear below your profile photo.',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: aboutController,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          minLines: 5,
+          maxLines: 8,
+          onChanged: (_) => _validateStep3ForFinish(),
+          decoration: _deco('Describe yourself', errorText: aboutError),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '$words / $aboutMaxWords words',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ),
+      ],
+    );
   }
-
-  void _previous() => _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-
-  void _skip() => Navigator.pushReplacementNamed(context, '/home');
 
   @override
   void dispose() {
-    businessController.dispose();
-    professionController.dispose();
-    industryController.dispose();
-    stateController.dispose();
     cityController.dispose();
-    addressController.dispose();
-    educationInputController.dispose();
+    companyController.dispose();
+    designationController.dispose();
+    aboutController.dispose();
     _pageController.dispose();
     super.dispose();
   }

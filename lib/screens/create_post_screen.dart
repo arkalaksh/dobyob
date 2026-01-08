@@ -18,7 +18,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   bool isLoading = false;
   String? myUserId;
 
-  // LinkedIn-style visibility (only UI)
   String selectedVisibility = "Public";
 
   @override
@@ -27,13 +26,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     _loadUserId();
   }
 
+  @override
+  void dispose() {
+    contentController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadUserId() async {
     final session = await DobYobSessionManager.getInstance();
     final uid = await session.getUserId();
     if (!mounted) return;
-    setState(() {
-      myUserId = uid?.toString();
-    });
+    setState(() => myUserId = uid?.toString());
   }
 
   Future<void> pickFile() async {
@@ -42,10 +45,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       type: FileType.any,
     );
     if (result != null && result.files.single.path != null) {
-      setState(() {
-        selectedFile = File(result.files.single.path!);
-      });
+      setState(() => selectedFile = File(result.files.single.path!));
     }
+  }
+
+  /// ✅ Always go back to HomeShell Feed tab
+  void _goToFeed({bool posted = false}) {
+    // ✅ Prefer pop with result (FeedScreen waits for this result)
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context, posted);
+      return;
+    }
+
+    // ✅ Fallback: try to return to root (avoids pushReplacement that may skip refresh)
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _submitPost() async {
@@ -74,12 +87,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
 
     setState(() => isLoading = false);
-
     if (!mounted) return;
 
     if (result['success'] == true) {
-      // यशस्वी पोस्ट नंतर direct feed (home) ला replace
-      Navigator.pushReplacementNamed(context, '/home');
+      // (optional) UI clean
+      contentController.clear();
+      selectedFile = null;
+
+      _goToFeed(posted: true); // ✅ success नंतर feed ला TRUE result
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'] ?? "Failed to post")),
@@ -128,14 +143,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   title: "Public",
                   subtitle: "Public on or off the app",
                 ),
-                // _visibilityTile(
-                //   title: "Connections only",
-                //   subtitle: "Only your connections",
-                // ),
-                // _visibilityTile(
-                //   title: "Group",
-                //   subtitle: "Members of a selected group",
-                // ),
                 const SizedBox(height: 12),
               ],
             ),
@@ -167,10 +174,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         color: selected ? const Color(0xFF0A66C2) : Colors.grey,
       ),
       onTap: () {
-        setState(() {
-          selectedVisibility = title;
-        });
-        Navigator.pop(context);
+        setState(() => selectedVisibility = title);
+        Navigator.pop(context, true);
+
       },
     );
   }
@@ -195,10 +201,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            // back दाबलं तरी direct feed वरच जा
-            Navigator.pushNamed(context, '/home');
-          },
+          onPressed: () => _goToFeed(posted: false), // ✅ back => feed (false)
         ),
         title: const Text(
           "Create Post",
@@ -242,8 +245,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   onTap: _openVisibilitySheet,
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: const Color(0xFF4B5563)),
@@ -278,10 +281,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 hintText: "What do you want to talk about?",
-                hintStyle: TextStyle(
-                  fontSize: 16,
-                  color: Color(0xFF6B7280),
-                ),
+                hintStyle: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
               ),
             ),
             if (selectedFile != null) ...[
@@ -301,20 +301,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            Icons.insert_drive_file,
-                            size: 28,
-                            color: Colors.white,
-                          ),
+                          const Icon(Icons.insert_drive_file,
+                              size: 28, color: Colors.white),
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                               selectedFile!.path.split('/').last,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.white,
-                              ),
+                                  fontSize: 14, color: Colors.white),
                             ),
                           ),
                         ],
@@ -326,27 +321,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               children: [
                 IconButton(
                   onPressed: pickFile,
-                  icon: const Icon(
-                    Icons.attach_file,
-                    color: accent,
-                    size: 28,
-                  ),
+                  icon: const Icon(Icons.attach_file, color: accent, size: 28),
                 ),
                 IconButton(
                   onPressed: () {},
-                  icon: const Icon(
-                    Icons.calendar_today_outlined,
-                    color: accent,
-                    size: 26,
-                  ),
+                  icon: const Icon(Icons.calendar_today_outlined,
+                      color: accent, size: 26),
                 ),
                 IconButton(
                   onPressed: () {},
-                  icon: const Icon(
-                    Icons.add,
-                    color: accent,
-                    size: 28,
-                  ),
+                  icon: const Icon(Icons.add, color: accent, size: 28),
                 ),
               ],
             ),
