@@ -19,6 +19,9 @@ class DobYobSessionManager {
   // DOB support for priority feed
   static const String _keyDob = 'dy_user_dob';
 
+  // 🔥 NEW: Session token key (Feed name fix)
+  static const String _keySessionToken = 'dy_session_token';
+
   // Keys
   static const String _keyUserId = 'dy_user_id';
   static const String _keyUserName = 'dy_user_name';
@@ -47,7 +50,7 @@ class DobYobSessionManager {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  /// Save user session (DOB add केलं)
+  /// Save user session (DOB + Session Token add केलं)
   Future<void> saveUserSession({
     required int userId,
     required String name,
@@ -57,6 +60,7 @@ class DobYobSessionManager {
     required String deviceToken,
     required String deviceType,
     String? profilePicture,
+    String? sessionToken, // 🔥 NEW: Login API response मधून
   }) async {
     await _ensurePrefs();
 
@@ -69,6 +73,9 @@ class DobYobSessionManager {
         _prefs!.setString(_keyDeviceToken, deviceToken),
         _prefs!.setString(_keyDeviceType, deviceType),
         _prefs!.setBool(_keyIsLoggedIn, true),
+        // 🔥 NEW: Session token save
+        if (sessionToken != null && sessionToken.isNotEmpty)
+          _prefs!.setString(_keySessionToken, sessionToken),
       ]);
 
       // DOB save
@@ -84,7 +91,7 @@ class DobYobSessionManager {
       }
 
       if (kDebugMode) {
-        print('✅ DobYob session saved for: $name, DOB: $dob');
+        print('✅ DobYob session saved for: $name, DOB: $dob, Token: ${sessionToken?.substring(0, 8) ?? "null"}...');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -125,6 +132,12 @@ class DobYobSessionManager {
     return _prefs?.getString(_keyDob);
   }
 
+  // 🔥 NEW: Session token getter
+  Future<String?> getSessionToken() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keySessionToken);
+  }
+
   Future<void> setDob(String dob) async {
     await _ensurePrefs();
     await _prefs!.setString(_keyDob, dob);
@@ -155,6 +168,7 @@ class DobYobSessionManager {
         'device_token': await getDeviceToken(),
         'device_type': await getDeviceType(),
         'profile_picture': await getProfilePicture(),
+        'session_token': await getSessionToken(), // 🔥 NEW
         'is_logged_in': await isLoggedIn(),
       };
 
@@ -179,46 +193,40 @@ class DobYobSessionManager {
   }
 
   // -------- Logout / Clear --------
-// Replace clearSession() method with this:
-Future<void> clearSession() async {
-  await _ensurePrefs();
+  Future<void> clearSession() async {
+    await _ensurePrefs();
 
-  try {
-    // 🔥 SELECTIVE CLEAR - Session keys only
-    final sessionKeys = [
-      _keyUserId,
-      _keyUserName, 
-      _keyEmail,
-      _keyPhone,
-      _keyDob,
-      _keyDeviceToken,
-      _keyDeviceType,
-      _keyProfilePicture,
-      _keyIsLoggedIn,
-    ];
+    try {
+      // 🔥 COMPLETE CLEAR - All session keys
+      final sessionKeys = [
+        _keyUserId,
+        _keyUserName,
+        _keyEmail,
+        _keyPhone,
+        _keyDob,
+        _keyDeviceToken,
+        _keyDeviceType,
+        _keyProfilePicture,
+        _keyIsLoggedIn,
+        _keySessionToken, // 🔥 NEW
+      ];
 
-    for (String key in sessionKeys) {
-      await _prefs!.remove(key);
+      // Batch remove (performance)
+      await Future.wait(sessionKeys.map((key) => _prefs!.remove(key)));
+
+      // Force profile pic refresh globally
+      profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
+
+      if (kDebugMode) {
+        print('✅ COMPLETE DobYob session cleared (${sessionKeys.length} keys)');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error clearing DobYob session: $e');
+      rethrow;
     }
-
-    // Profile pic version reset
-    profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
-
-    if (kDebugMode) {
-      print('✅ DobYob session completely cleared (${sessionKeys.length} keys)');
-    }
-  } catch (e) {
-    if (kDebugMode) print('❌ Error clearing DobYob session: $e');
-    rethrow;
   }
-}
 
-
-
-  // ✅ UPDATED: Backend session validation
-  // - server status:success => logged in
-  // - server status:invalid => logout (clearSession)
-  // - server status:error/unknown OR network exception => keep logged in (offline-safe)
+  // ✅ UPDATED: Backend session validation with token
   Future<bool> validateSession() async {
     await _ensurePrefs();
 
@@ -231,10 +239,13 @@ Future<void> clearSession() async {
     }
 
     try {
+      // 🔥 Pass session token to backend validation
+      final sessionToken = await getSessionToken();
       final res = await ApiService().checkSession(userId);
-      if (kDebugMode) print("🔍 SESSION VALIDATION: $res");
+      
+      if (kDebugMode) print("🔍 SESSION VALIDATION: ${res['status']}");
 
-      final status = (res['status'] ?? '').toString();
+      final status = (res['status'] ?? '').toString().toLowerCase();
 
       if (status == 'invalid') {
         await clearSession();
@@ -245,11 +256,11 @@ Future<void> clearSession() async {
         return true;
       }
 
-      // status == 'error' किंवा काही unexpected -> logout नको
+      // status == 'error' किंवा unexpected → offline safe
       return true;
     } catch (e) {
-      if (kDebugMode) print("🔍 validateSession exception: $e");
-      return true;
+      if (kDebugMode) print("🔍 validateSession network error: $e - keeping local session");
+      return true; // Offline safe
     }
   }
 }

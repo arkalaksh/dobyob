@@ -18,17 +18,16 @@ class FeedScreen extends StatefulWidget {
   @override
   State<FeedScreen> createState() => FeedScreenState();
 }
-     // 🔥 NEW
+    
 
 class FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
  Future<List<Map<String, dynamic>>>? postsFuture;
   String? myUserId;
   String? myProfilePic;
-   // 🔥 ADD या 2 lines:
+
   bool _isInitialized = false;  // NEW
   bool _isLoading = false;      // NEW
    final GlobalKey _feedKey = GlobalKey(); // Navigation साठी
-   
 
   // ✅ DOB for priority feed
   String? myDob;
@@ -46,8 +45,7 @@ class FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     DobYobSessionManager.profilePicVersion.addListener(_onGlobalProfilePicChanged);
-    
-    // 🔥 REPLACE - पुरलं _initUserAndLoad() हटवा:
+  
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(Duration(milliseconds: 150), () {
         print("🚀 FEEDSCREEN LOADED - CHECKING SESSION...");
@@ -75,8 +73,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     print("📱 APP RESUMED"); // DEBUG
     _checkAuthAndReload();
   }
-}
-Future<void> _checkAuthAndReload({bool forceReload = false}) async {
+}Future<void> _checkAuthAndReload({bool forceReload = false}) async {
   if (_isLoading) return;
   _isLoading = true;
 
@@ -84,57 +81,48 @@ Future<void> _checkAuthAndReload({bool forceReload = false}) async {
     final session = await DobYobSessionManager.getInstance();
     final uidInt = await session.getUserId();
 
-    // 🔴 CASE 1: USER LOGGED OUT
+    print("🔍 SESSION DEBUG → UID: $uidInt, DOB: '${await session.getDob()}'");
+
+    // CASE 1: LOGGED OUT
     if (uidInt == null) {
-  if (mounted) {
-    setState(() {
-      myUserId = null;
-      myProfilePic = null;
-      myDob = null;
-
-      postsFuture = null;
-      _isInitialized = false;
-    });
-  }
-
-  // 🔥 VERY IMPORTANT
-  PaintingBinding.instance.imageCache.clear();
-  PaintingBinding.instance.imageCache.clearLiveImages();
-
-  return;
-}
-
+      // ... existing logout code
+      return;
+    }
 
     final newUserId = uidInt.toString();
 
-    // 🔴 CASE 2: NEW USER LOGIN OR FORCE RELOAD
+    // CASE 2: NEW LOGIN / FORCE RELOAD → CRITICAL DOB REFRESH
     if (myUserId != newUserId || forceReload) {
-      print("🔄 USER CHANGED OR FORCE RELOAD");
-
-      // 🔥 Evict old profile pic cache if exists
-      if (myProfilePic != null && myProfilePic!.isNotEmpty) {
-        final oldUrl =
-            DobYobSessionManager.resolveUrl(myProfilePic!);
-        await CachedNetworkImage.evictFromCache(oldUrl)
-            .catchError((_) {});
+      print("🚀 NEW LOGIN → REFRESHING DOB FROM API");
+      
+      // 🔥 REFRESH DOB FROM PROFILE API (Session NULL असल्यास)
+      myDob = await session.getDob();
+      if (myDob == null || myDob!.isEmpty) {
+        print("⚠️ SESSION DOB NULL → Fetching from API");
+        final profileData = await _api.getProfile(newUserId);
+        myDob = profileData?['date_of_birth']?.toString() ?? '';
+        if (myDob!.isNotEmpty) {
+          await session.setDob(myDob!);  // Permanent save
+        }
       }
-
+      
+      print("🔥 FINAL DOB → '$myDob'");
+      
+      // AGGRESSIVE CLEANUP + FULL REFRESH
+      PaintingBinding.instance.imageCache.clear();
       if (mounted) {
         setState(() {
           myUserId = newUserId;
-          myProfilePic = null;     // 🔥 FORCE fresh profile
-          myDob = null;
-          postsFuture = null;     // 🔥 CLEAR OLD POSTS
+          myProfilePic = null;
+          postsFuture = null;
           _isInitialized = false;
-          _myAvatarBust = DateTime.now().millisecondsSinceEpoch;
         });
       }
-
-      // 🔥 Fresh init + fresh API call
       await _initUserAndLoad();
+      return;
     }
 
-    // 🔴 CASE 3: SAME USER BUT NOT INITIALIZED
+    // CASE 3: Same user
     else if (!_isInitialized) {
       await _initUserAndLoad();
     }
@@ -142,6 +130,8 @@ Future<void> _checkAuthAndReload({bool forceReload = false}) async {
     _isLoading = false;
   }
 }
+
+
 Future<void> _initUserAndLoad() async {
   final session = await DobYobSessionManager.getInstance();
   final uidInt = await session.getUserId();
@@ -151,113 +141,101 @@ Future<void> _initUserAndLoad() async {
   myUserId = uidInt.toString();
   myDob = await session.getDob();
 
-  // 🔥 FORCE fresh profile pic on every login
+  print("🔥 INIT: UID=$myUserId DOB=$myDob");
+
+  // 🔥 Profile pic sync FIRST
   await _syncMyProfilePicFromSessionAndApi(forceApi: true);
+  
+  // 🔥 FULL cache clear
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
 
   if (!mounted) return;
 
-  setState(() {
-    _isInitialized = true;
-     postsFuture = null;
-    _myAvatarBust = DateTime.now().millisecondsSinceEpoch;
+  // 🔥 LOAD GLOBAL FEED DIRECTLY - NO refreshPosts() call
+  postsFuture = _api.getPosts(
+    userId: myUserId!,           // ✅ Backend expects loggedInUserId  
+    dob: myDob ?? ''             // ✅ DOB priority sorting
+  ).then((rawPosts) async {
+    print("📱 GLOBAL FEED: ${rawPosts.length} posts");
+    
+    final List<Map<String, dynamic>> posts = rawPosts
+        .map((p) => Map<String, dynamic>.from(p))
+        .toList();
 
-    postsFuture = _api
-        .getPosts(
-          userId: myUserId!,
-          dob: myDob ?? '',
-        )
-        .then((rawPosts) async {
-          // 🔥 DEEP COPY to prevent old user data bleed
-         final List<Map<String, dynamic>> posts =
-  rawPosts
-    .map((p) => jsonDecode(jsonEncode(p)) as Map<String, dynamic>)
-    .toList();
-
-          // 🔥 Evict ALL profile pic cache safely
-          for (final post in posts) {
-            final rawPic = post['profile_pic']?.toString() ?? '';
-            if (rawPic.isNotEmpty) {
-              await CachedNetworkImage.evictFromCache(
-                DobYobSessionManager.resolveUrl(rawPic),
-              ).catchError((_) {});
-            }
-          }
-
-          return posts;
-        });
+    // Clear ALL profile pics
+    for (final post in posts) {
+      final rawPic = post['profile_pic']?.toString() ?? '';
+      if (rawPic.isNotEmpty) {
+        await CachedNetworkImage.evictFromCache(
+          DobYobSessionManager.resolveUrl(rawPic),
+        );
+      }
+    }
+    return posts;
   });
+
+  // 🔥 NO refreshPosts() call here!
+  if (mounted) {
+    setState(() {
+      _isInitialized = true;
+    });
+  }
 
 
  }
-  Future<void> _syncMyProfilePicFromSessionAndApi(
-      {required bool forceApi}) async {
-    if (_checkingPic) return;
-    if (myUserId == null) return;
-
-    _checkingPic = true;
-    try {
-      final session = await DobYobSessionManager.getInstance();
-
-      // 1) Session मधून घ्या
-      String? localPic = await session.getProfilePicture();
-      String? finalPic = localPic;
-
-      // 2) forceApi असेल किंवा session empty असेल तर API call
-      if (forceApi || finalPic == null || finalPic.isEmpty) {
-        final user = await _api.getProfile(myUserId!);
-        // backend keys fallback
-        final apiPic = (user?['profile_pic'] ??
-                user?['profilepic'] ??
-                user?['profilePicture'])
-            ?.toString();
-
-        if (apiPic != null && apiPic.isNotEmpty) {
-          finalPic = apiPic;
-          await session.updateProfilePicture(apiPic); // will notify too
-        }
-      }
-      finalPic ??= "";
-
-      if (!mounted) return;
-
-      // ✅ changed असेल तर UI update + cache bust + (optional) feed rebuild
-      if ((myProfilePic ?? "") != finalPic) {
-        // evict old/new to be safe
-        final oldUrl = (myProfilePic != null && myProfilePic!.isNotEmpty)
-            ? DobYobSessionManager.resolveUrl(myProfilePic!)
-            : "";
-        final newUrl =
-            finalPic.isNotEmpty ? DobYobSessionManager.resolveUrl(finalPic) : "";
-
-        if (oldUrl.isNotEmpty) {
-          await CachedNetworkImage.evictFromCache(oldUrl);
-        }
-        if (newUrl.isNotEmpty) {
-          await CachedNetworkImage.evictFromCache(newUrl);
-        }
-
-        setState(() {
-  myProfilePic = finalPic;
-  _myAvatarBust = DateTime.now().millisecondsSinceEpoch;
-
-
-        });
-      }
-    } catch (_) {
-      // ignore
-    } finally {
-      _checkingPic = false;
-    }
-  }
-  void refreshPosts() {
+  Future<void> _syncMyProfilePicFromSessionAndApi({required bool forceApi}) async { 
+  if (_checkingPic) return;
   if (myUserId == null) return;
 
-  setState(() {
-    postsFuture = _api.getPosts(
-      userId: myUserId!,
-      dob: myDob ?? '',
-    );
-  });
+  _checkingPic = true;
+  try {
+    final session = await DobYobSessionManager.getInstance();
+
+    // 1) Session मधून घ्या (existing methods)
+    String? localPic = await session.getProfilePicture();
+    String? finalPic = localPic;
+
+    // 2) forceApi → Fresh API call
+    if (forceApi || finalPic == null || finalPic.isEmpty) {
+      final user = await _api.getProfile(myUserId!);
+      final apiPic = (user?['profile_pic'] ?? user?['profilepic'] ?? '').toString();
+
+      if (apiPic.isNotEmpty) {
+        finalPic = apiPic;
+        // ✅ NO session.setProfilePic() - Just use it
+      }
+    }
+
+    finalPic ??= "";
+
+    if (!mounted) return;
+
+    // 🔥 UI + Cache update only
+    if ((myProfilePic ?? "") != finalPic) {
+      final oldUrl = myProfilePic != null && myProfilePic!.isNotEmpty
+          ? DobYobSessionManager.resolveUrl(myProfilePic!)
+          : "";
+      final newUrl = finalPic.isNotEmpty ? DobYobSessionManager.resolveUrl(finalPic) : "";
+
+      // Clear caches
+      if (oldUrl.isNotEmpty) await CachedNetworkImage.evictFromCache(oldUrl);
+      if (newUrl.isNotEmpty) await CachedNetworkImage.evictFromCache(newUrl);
+      
+      // FULL image cache clear
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      setState(() {
+        myProfilePic = finalPic;
+        _myAvatarBust = DateTime.now().millisecondsSinceEpoch;
+      });
+    }
+  } catch (e) {
+    print("🔍 Profile sync error: $e");
+  } finally {
+    _checkingPic = false;
+  }
 }
 
   String _formatPostTime(String? createdAt) {
@@ -352,282 +330,280 @@ Future<void> _initUserAndLoad() async {
     },
   ),
 );
-
+}
+void refreshPosts() {
+  if (myUserId == null) return;
+  
+  print("🔄 MANUAL REFRESH - UID: $myUserId");
+  
+  setState(() {
+    postsFuture = _api.getPosts(
+      userId: myUserId!,        // ✅ Backend expects THIS
+      dob: myDob ?? ''
+    );
+  });
 }
 
-  void _openPostOptionsSheet(
-    Map<String, dynamic> post,
-    int index,
-    List<Map<String, dynamic>> posts,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF020617),
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+ void _openPostOptionsSheet(
+  Map<String, dynamic> post,
+  int index,
+  List<Map<String, dynamic>> posts,
+) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF020617),
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.edit, color: Colors.white),
-                title: const Text("Edit", style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openEditPostSheet(post);
-                },
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.white),
+              title: const Text("Edit", style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openEditPostSheet(post);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text("Delete", style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeletePost(post, index, posts);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      );
+    },
+  );
+}
+void _openEditPostSheet(Map<String, dynamic> post) {
+  if (myUserId == null) return;
+  final ctrl = TextEditingController(text: (post['content'] ?? '').toString());
+  
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFF020617),
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) {
+      final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: bottomInset,
+          left: 14,
+          right: 14,
+          top: 12,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(2),
               ),
-              ListTile(
-                leading:
-                    const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text("Delete",
-                    style: TextStyle(color: Colors.redAccent)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmDeletePost(post, index, posts);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
-  }
-  void _openEditPostSheet(Map<String, dynamic> post) {
-    if (myUserId == null) return;
-    final ctrl = TextEditingController(text: (post['content'] ?? '').toString());
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF020617),
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: bottomInset,
-            left: 14,
-            right: 14,
-            top: 12,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Edit post",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: ctrl,
-                maxLines: null,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: "Update your post...",
-                  hintStyle: const TextStyle(color: Color(0xFF6B7280)),
-                  filled: true,
-                  fillColor: const Color(0xFF020817),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF1F2937)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF0EA5E9)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("Cancel",
-                        style: TextStyle(color: Colors.white70)),
-                  ),
-                  const SizedBox(width: 10),
-                  TextButton(
-                    onPressed: () async {
-                      final newText = ctrl.text.trim();
-                      if (newText.isEmpty) return;
-
-                      Navigator.pop(ctx);
-
-                      setState(() {
-                        post['content'] = newText;
-                      });
-
-                      final res = await _api.updatePost(
-                        postId: post['id'].toString(),
-                        userId: myUserId!,
-                        content: newText,
-                      );
-
-                      if (res['success'] != true && mounted) {
-                        refreshPosts();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              res['message']?.toString() ??
-                                  "Failed to update post",
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text(
-                      "Save",
-                      style: TextStyle(
-                        color: Color(0xFF0EA5E9),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
-  }
-  void _confirmDeletePost(
-    Map<String, dynamic> post,
-    int index,
-    List<Map<String, dynamic>> posts,
-  ) {
-    if (myUserId == null) return;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF020617),
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                "Delete post?",
+            ),
+            const SizedBox(height: 12),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Edit post",
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   fontSize: 16,
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                "This action cannot be undone.",
-                style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              maxLines: null,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Update your post...",
+                hintStyle: const TextStyle(color: Color(0xFF6B7280)),
+                filled: true,
+                fillColor: const Color(0xFF020817),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF1F2937)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF1F2937)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF0EA5E9)),
+                ),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF1F2937)),
-                      ),
-                      child: const Text("Cancel",
-                          style: TextStyle(color: Colors.white)),
-                    ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
+                ),
+                const SizedBox(width: 10),
+                TextButton(
+                  onPressed: () async {
+                    final newText = ctrl.text.trim();
+                    if (newText.isEmpty) return;
+
+                    Navigator.pop(ctx);
+
+                    // Optimistic update
+                    setState(() {
+                      post['content'] = newText;
+                    });
+
+                    final res = await _api.updatePost(
+                      postId: post['id'].toString(),
+                      userId: myUserId!,
+                      content: newText,
+                    );
+
+                    // API fail → FULL REFRESH
+                    if (res['success'] != true && mounted) {
+                      refreshPosts();  // ✅ Fresh feed + correct names
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(res['message'] ?? "Update failed")),
+                      );
+                    }
+                  },
+                  child: const Text(
+                    "Save",
+                    style: TextStyle(color: Color(0xFF0EA5E9), fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent),
-                      onPressed: () async {
-                        Navigator.pop(ctx);
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      );
+    },
+  );
+}
+  void _confirmDeletePost(
+  Map<String, dynamic> post,
+  int index,
+  List<Map<String, dynamic>> posts,
+) {
+  if (myUserId == null) return;
 
-                        setState(() {
-                          if (index >= 0 && index < posts.length) {
-                            posts.removeAt(index);
-                          }
-                        });
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF020617),
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              "Delete post?",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "This action cannot be undone.",
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF1F2937)),
+                    ),
+                    child: const Text("Cancel", style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
 
-                        final res = await _api.deletePost(
-                          postId: post['id'].toString(),
-                          userId: myUserId!,
-                        );
-                        if (res['success'] != true && mounted) {
-                          refreshPosts();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                res['message']?.toString() ??
-                                    "Failed to delete post",
-                              ),
-                            ),
-                          );
+                      // Optimistic delete
+                      setState(() {
+                        if (index >= 0 && index < posts.length) {
+                          posts.removeAt(index);
                         }
-                      },
-                      child: const Text("Delete",
-                          style: TextStyle(color: Colors.white)),
-                    ),
+                      });
+
+                      final res = await _api.deletePost(
+                        postId: post['id'].toString(),
+                        userId: myUserId!,
+                      );
+
+                      // API fail → FULL REFRESH
+                      if (res['success'] != true && mounted) {
+                        refreshPosts();  // ✅ Fresh feed
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(res['message'] ?? "Delete failed")),
+                        );
+                      }
+                    },
+                    child: const Text("Delete", style: TextStyle(color: Colors.white)),
                   ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
   // Comments Sheet
   void _showCommentsSheet(Map<String, dynamic> post) async {
   if (!mounted) return;
@@ -864,11 +840,7 @@ Future<void> _initUserAndLoad() async {
   if (Navigator.canPop(sheetContext)) {
     Navigator.pop(sheetContext);
   }
-
-  // Feed refresh will happen here (already in whenComplete)
 }
-
-
   // Likes Sheet
   void _showLikesSheet(Map<String, dynamic> post) async {
     final postId = post['id'].toString();
@@ -1076,9 +1048,6 @@ WidgetsBinding.instance.addPostFrameCallback((_) {
 
   if (result == true) refreshPosts();
 },
-
-
-
             ),
             const SizedBox(width: 4),
           ],
@@ -1217,11 +1186,10 @@ return Container(
               ),
             ),
             if (isMyPost)
-              IconButton(
-                icon: const Icon(Icons.more_horiz, color: Colors.white),
-                onPressed: () =>
-                    _openPostOptionsSheet(post, i, posts),
-              ),
+  IconButton(
+    icon: const Icon(Icons.more_horiz, color: Colors.white),
+    onPressed: () => _openPostOptionsSheet(post, i, posts),  // ✅ Works!
+  ),
           ],
         ),
         const SizedBox(height: 10),

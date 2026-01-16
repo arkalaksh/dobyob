@@ -46,91 +46,100 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loginWithMpin() async {
-    final email = emailController.text.trim();
-    final mpin = mpinController.text.trim();
+  final email = emailController.text.trim();
+  final mpin = mpinController.text.trim();
 
-    debugPrint("LOGIN => email=$email mpin=$mpin token=${widget.fcmToken}");
+  debugPrint("LOGIN => email=$email mpin=$mpin token=${widget.fcmToken}");
 
-    if (email.isEmpty) {
-      _showSnack('Please enter your email');
+  if (email.isEmpty) {
+    _showSnack('Please enter your email');
+    return;
+  }
+
+  if (!_isValidEmail(email)) {
+    _showSnack('Please enter a valid .com email address');
+    return;
+  }
+
+  if (mpin.length != 6) {
+    _showSnack('Enter 6-digit MPIN');
+    return;
+  }
+
+  setState(() => isLoading = true);
+
+  Map<String, dynamic> res = {};
+  try {
+    res = await apiService.verifyLoginOtp(
+      email: email,
+      mpin: mpin,
+      deviceToken: widget.fcmToken,
+      deviceType: Platform.isAndroid ? 'android' : 'ios',
+    );
+  } catch (e) {
+    if (mounted) setState(() => isLoading = false);
+    _showSnack('Network/Parsing error: $e');
+    return;
+  }
+
+  if (!mounted) return;
+  setState(() => isLoading = false);
+
+  final String serverMsg =
+      (res['message'] ?? res['error'] ?? res['raw'] ?? 'Login failed').toString();
+
+  if (res['success'] == true) {
+    final data = (res['user'] is Map) ? (res['user'] as Map) : res;
+
+    final userIdStr = (data['user_id'] ?? data['id'] ?? '').toString();
+    final userId = int.tryParse(userIdStr);
+
+    if (userId == null) {
+      _showSnack('Invalid user_id from server: $userIdStr');
       return;
     }
 
-    if (!_isValidEmail(email)) {
-      _showSnack('Please enter a valid .com email address');
-      return;
-    }
+    final String name = (data['full_name'] ?? data['name'] ?? '').toString();
+    final String userEmail = (data['email'] ?? email).toString();
+    final String phone = (data['phone'] ?? '').toString();
+    
+    // 🔥 NEW: DOB from response (Feed filtering)
+    final String dob = (data['date_of_birth'] ?? '').toString();
 
-    if (mpin.length != 6) {
-      _showSnack('Enter 6-digit MPIN');
-      return;
-    }
-setState(() => isLoading = true);
-
-// 🔥 ADD THIS
-final session = await DobYobSessionManager.getInstance();
-await session.clearSession();
-
-Map<String, dynamic> res = {};
-try {
-  res = await apiService.verifyLoginOtp(
-    email: email,
-    mpin: mpin,
-    deviceToken: widget.fcmToken,
-    deviceType: Platform.isAndroid ? 'android' : 'ios',
-  );
-
+    try {
+      final session = await DobYobSessionManager.getInstance();
+      
+      // 🔥 UPDATED: sessionToken + dob add केला
+      await session.saveUserSession(
+        userId: userId,
+        name: name,
+        email: userEmail,
+        phone: phone,
+        dob: dob.isNotEmpty ? dob : null,  // Feed priority sorting
+        deviceToken: widget.fcmToken,
+        deviceType: Platform.isAndroid ? 'android' : 'ios',
+        profilePicture: (data['profile_pic'] != null &&
+                data['profile_pic'].toString().toLowerCase() != 'null')
+            ? data['profile_pic'].toString()
+            : '',
+        sessionToken: data['session_token']?.toString(),  // 🔥 Feed cache fix!
+      );
+      
+      debugPrint('✅ Login session saved: $name (ID: $userId)');
+      
     } catch (e) {
-      if (mounted) setState(() => isLoading = false);
-      _showSnack('Network/Parsing error: $e');
+      debugPrint("SESSION ERROR: $e");
+      _showSnack('Session save error');
       return;
     }
 
     if (!mounted) return;
-    setState(() => isLoading = false);
-
-    final String serverMsg =
-        (res['message'] ?? res['error'] ?? res['raw'] ?? 'Login failed').toString();
-
-    if (res['success'] == true) {
-      final data = (res['user'] is Map) ? (res['user'] as Map) : res;
-
-      final userIdStr = (data['user_id'] ?? data['id'] ?? '').toString();
-      final userId = int.tryParse(userIdStr);
-
-      if (userId == null) {
-        _showSnack('Invalid user_id from server: $userIdStr');
-        return;
-      }
-
-      final String name = (data['full_name'] ?? data['name'] ?? '').toString();
-      final String userEmail = (data['email'] ?? email).toString();
-      final String phone = (data['phone'] ?? '').toString();
-
-      try {
-        final session = await DobYobSessionManager.getInstance();
-        await session.saveUserSession(
-  userId: userId,
-  name: name,
-  email: userEmail,
-  phone: phone,
-  deviceToken: widget.fcmToken,
-  deviceType: Platform.isAndroid ? 'android' : 'ios',
-  profilePicture: (data['profile_pic'] != null &&
-          data['profile_pic'].toString().toLowerCase() != 'null')
-      ? data['profile_pic'].toString()
-      : '',
-);
-      } catch (e) {
-        debugPrint("SESSION ERROR: $e");
-      }
-
-      if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-    } else {
-      _showSnack(serverMsg);
-    }
+    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+  } else {
+    _showSnack(serverMsg);
   }
+}
+
 
   Widget _buildMpinField() {
     return Column(
