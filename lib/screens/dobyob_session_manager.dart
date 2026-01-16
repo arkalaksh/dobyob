@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:dobyob_1/services/api_service.dart';
+
 class DobYobSessionManager {
   static DobYobSessionManager? _instance;
   static SharedPreferences? _prefs;
@@ -11,9 +13,21 @@ class DobYobSessionManager {
   // BASE URL (absolute path generation साठी)
   static const String BASE_URL = "https://dobyob.arkalaksh.com/";
 
-  // ✅ NEW: profile pic update झालं की app मधल्या इतर screens ला signal देण्यासाठी
-  // value change -> listeners trigger
+  // profile pic update झालं की app मधल्या इतर screens ला signal देण्यासाठी
   static final ValueNotifier<int> profilePicVersion = ValueNotifier<int>(0);
+
+  // DOB support for priority feed
+  static const String _keyDob = 'dy_user_dob';
+
+  // Keys
+  static const String _keyUserId = 'dy_user_id';
+  static const String _keyUserName = 'dy_user_name';
+  static const String _keyEmail = 'dy_user_email';
+  static const String _keyPhone = 'dy_user_phone';
+  static const String _keyDeviceToken = 'dy_device_token';
+  static const String _keyDeviceType = 'dy_device_type';
+  static const String _keyIsLoggedIn = 'dy_is_logged_in';
+  static const String _keyProfilePicture = 'dy_profile_picture';
 
   // Convert relative path → absolute URL
   static String resolveUrl(String? path) {
@@ -33,22 +47,13 @@ class DobYobSessionManager {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  // Keys
-  static const String _keyUserId = 'dy_user_id';
-  static const String _keyUserName = 'dy_user_name';
-  static const String _keyEmail = 'dy_user_email';
-  static const String _keyPhone = 'dy_user_phone';
-  static const String _keyDeviceToken = 'dy_device_token';
-  static const String _keyDeviceType = 'dy_device_type';
-  static const String _keyIsLoggedIn = 'dy_is_logged_in';
-  static const String _keyProfilePicture = 'dy_profile_picture';
-
-  /// Save user session
+  /// Save user session (DOB add केलं)
   Future<void> saveUserSession({
     required int userId,
     required String name,
     required String email,
     required String phone,
+    String? dob, // DD-MM-YYYY
     required String deviceToken,
     required String deviceType,
     String? profilePicture,
@@ -66,21 +71,23 @@ class DobYobSessionManager {
         _prefs!.setBool(_keyIsLoggedIn, true),
       ]);
 
+      // DOB save
+      if (dob != null && dob.isNotEmpty) {
+        await _prefs!.setString(_keyDob, dob);
+      }
+
+      // profile picture
       if (profilePicture != null && profilePicture.isNotEmpty) {
         final fullUrl = resolveUrl(profilePicture);
         await _prefs!.setString(_keyProfilePicture, fullUrl);
-
-        // ✅ NEW: session save मध्ये pic set होत असेल तर पण notify
         profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
       }
 
       if (kDebugMode) {
-        // ignore: avoid_print
-        print('✅ DobYob session saved for: $name');
+        print('✅ DobYob session saved for: $name, DOB: $dob');
       }
     } catch (e) {
       if (kDebugMode) {
-        // ignore: avoid_print
         print('❌ Error saving DobYob session: $e');
       }
       rethrow;
@@ -88,27 +95,63 @@ class DobYobSessionManager {
   }
 
   // -------- Getters --------
-  Future<bool> isLoggedIn() async => _prefs?.getBool(_keyIsLoggedIn) ?? false;
+  Future<bool> isLoggedIn() async {
+    await _ensurePrefs();
+    return _prefs?.getBool(_keyIsLoggedIn) ?? false;
+  }
 
-  Future<int?> getUserId() async => _prefs?.getInt(_keyUserId);
+  Future<int?> getUserId() async {
+    await _ensurePrefs();
+    return _prefs?.getInt(_keyUserId);
+  }
 
-  Future<String?> getUserName() async => _prefs?.getString(_keyUserName);
+  Future<String?> getUserName() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyUserName);
+  }
 
-  Future<String?> getEmail() async => _prefs?.getString(_keyEmail);
+  Future<String?> getEmail() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyEmail);
+  }
 
-  Future<String?> getPhone() async => _prefs?.getString(_keyPhone);
+  Future<String?> getPhone() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyPhone);
+  }
 
-  Future<String?> getDeviceToken() async => _prefs?.getString(_keyDeviceToken);
+  Future<String?> getDob() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyDob);
+  }
 
-  Future<String?> getDeviceType() async => _prefs?.getString(_keyDeviceType);
+  Future<void> setDob(String dob) async {
+    await _ensurePrefs();
+    await _prefs!.setString(_keyDob, dob);
+    if (kDebugMode) print('✅ DOB saved: $dob');
+  }
 
-  Future<String?> getProfilePicture() async => _prefs?.getString(_keyProfilePicture);
+  Future<String?> getDeviceToken() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyDeviceToken);
+  }
+
+  Future<String?> getDeviceType() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyDeviceType);
+  }
+
+  Future<String?> getProfilePicture() async {
+    await _ensurePrefs();
+    return _prefs?.getString(_keyProfilePicture);
+  }
 
   Future<Map<String, dynamic>> getUserData() async => {
         'user_id': await getUserId(),
         'name': await getUserName(),
         'email': await getEmail(),
         'phone': await getPhone(),
+        'dob': await getDob(),
         'device_token': await getDeviceToken(),
         'device_type': await getDeviceType(),
         'profile_picture': await getProfilePicture(),
@@ -121,47 +164,92 @@ class DobYobSessionManager {
     await _prefs!.setString(_keyUserName, name);
   }
 
+  Future<void> updateDob(String dob) async {
+    await _ensurePrefs();
+    await _prefs!.setString(_keyDob, dob);
+    if (kDebugMode) print('✅ DOB updated: $dob');
+  }
+
   Future<void> updateProfilePicture(String url) async {
     await _ensurePrefs();
 
     final fullUrl = resolveUrl(url);
     await _prefs!.setString(_keyProfilePicture, fullUrl);
-
-    // ✅ NEW: हाच मुख्य change — feed/other screens ला लगेच कळेल
     profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
   }
 
   // -------- Logout / Clear --------
-  Future<void> clearSession() async {
+// Replace clearSession() method with this:
+Future<void> clearSession() async {
+  await _ensurePrefs();
+
+  try {
+    // 🔥 SELECTIVE CLEAR - Session keys only
+    final sessionKeys = [
+      _keyUserId,
+      _keyUserName, 
+      _keyEmail,
+      _keyPhone,
+      _keyDob,
+      _keyDeviceToken,
+      _keyDeviceType,
+      _keyProfilePicture,
+      _keyIsLoggedIn,
+    ];
+
+    for (String key in sessionKeys) {
+      await _prefs!.remove(key);
+    }
+
+    // Profile pic version reset
+    profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
+
+    if (kDebugMode) {
+      print('✅ DobYob session completely cleared (${sessionKeys.length} keys)');
+    }
+  } catch (e) {
+    if (kDebugMode) print('❌ Error clearing DobYob session: $e');
+    rethrow;
+  }
+}
+
+
+
+  // ✅ UPDATED: Backend session validation
+  // - server status:success => logged in
+  // - server status:invalid => logout (clearSession)
+  // - server status:error/unknown OR network exception => keep logged in (offline-safe)
+  Future<bool> validateSession() async {
     await _ensurePrefs();
 
+    final localLoggedIn = _prefs?.getBool(_keyIsLoggedIn) ?? false;
+    final userId = _prefs?.getInt(_keyUserId);
+
+    if (!localLoggedIn || userId == null || userId <= 0) {
+      await clearSession();
+      return false;
+    }
+
     try {
-      await Future.wait([
-        _prefs!.remove(_keyUserId),
-        _prefs!.remove(_keyUserName),
-        _prefs!.remove(_keyEmail),
-        _prefs!.remove(_keyPhone),
-        _prefs!.remove(_keyDeviceToken),
-        _prefs!.remove(_keyDeviceType),
-        _prefs!.remove(_keyProfilePicture),
-        _prefs!.setBool(_keyIsLoggedIn, false),
-      ]);
+      final res = await ApiService().checkSession(userId);
+      if (kDebugMode) print("🔍 SESSION VALIDATION: $res");
 
-      // ✅ optional: reset notifier
-      profilePicVersion.value = DateTime.now().millisecondsSinceEpoch;
+      final status = (res['status'] ?? '').toString();
 
-      if (kDebugMode) {
-        // ignore: avoid_print
-        print('✅ DobYob session cleared');
+      if (status == 'invalid') {
+        await clearSession();
+        return false;
       }
+
+      if (status == 'success') {
+        return true;
+      }
+
+      // status == 'error' किंवा काही unexpected -> logout नको
+      return true;
     } catch (e) {
-      if (kDebugMode) {
-        // ignore: avoid_print
-        print('❌ Error clearing DobYob session: $e');
-      }
-      rethrow;
+      if (kDebugMode) print("🔍 validateSession exception: $e");
+      return true;
     }
   }
-
-  Future getUserSession() async {}
 }

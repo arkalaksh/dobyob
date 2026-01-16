@@ -65,17 +65,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _showSnack('Enter 6-digit MPIN');
       return;
     }
+setState(() => isLoading = true);
 
-    setState(() => isLoading = true);
+// 🔥 ADD THIS
+final session = await DobYobSessionManager.getInstance();
+await session.clearSession();
 
-    Map<String, dynamic> res = {};
-    try {
-      res = await apiService.verifyLoginOtp(
-        email: email,
-        mpin: mpin,
-        deviceToken: widget.fcmToken,
-        deviceType: Platform.isAndroid ? 'android' : 'ios',
-      );
+Map<String, dynamic> res = {};
+try {
+  res = await apiService.verifyLoginOtp(
+    email: email,
+    mpin: mpin,
+    deviceToken: widget.fcmToken,
+    deviceType: Platform.isAndroid ? 'android' : 'ios',
+  );
+
     } catch (e) {
       if (mounted) setState(() => isLoading = false);
       _showSnack('Network/Parsing error: $e');
@@ -106,14 +110,17 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         final session = await DobYobSessionManager.getInstance();
         await session.saveUserSession(
-          userId: userId,
-          name: name,
-          email: userEmail,
-          phone: phone,
-          deviceToken: widget.fcmToken,
-          deviceType: Platform.isAndroid ? 'android' : 'ios',
-          profilePicture: data['profile_pic'],
-        );
+  userId: userId,
+  name: name,
+  email: userEmail,
+  phone: phone,
+  deviceToken: widget.fcmToken,
+  deviceType: Platform.isAndroid ? 'android' : 'ios',
+  profilePicture: (data['profile_pic'] != null &&
+          data['profile_pic'].toString().toLowerCase() != 'null')
+      ? data['profile_pic'].toString()
+      : '',
+);
       } catch (e) {
         debugPrint("SESSION ERROR: $e");
       }

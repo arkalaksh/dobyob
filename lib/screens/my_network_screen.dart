@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/other_profile_screen.dart';
+import 'package:flutter/services.dart';
 
 extension StringTitleCase on String {
   String toTitleCase() {
@@ -40,23 +41,22 @@ class _NetworkScreenState extends State<NetworkScreen>
   List<Map<String, dynamic>> suggestions = [];
   List<Map<String, dynamic>> requests = [];
 
-  // ✅ Search
+  // Search
   final TextEditingController _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
   bool searching = false;
   List<Map<String, dynamic>> searchResults = [];
 
-  // ✅ Auto refresh timer
+  // Auto refresh timer
   Timer? _autoRefreshTimer;
   bool _autoRefreshing = false;
 
-  // ✅ Pagination
+  // Pagination
   static const int _limit = 20;
   int _page = 1;
   bool _hasMore = true;
   bool _loadingMore = false;
 
-  // ✅ FIX: final controller (no LateInitializationError)
   final ScrollController _growScroll = ScrollController();
 
   @override
@@ -64,7 +64,15 @@ class _NetworkScreenState extends State<NetworkScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _growScroll.addListener(_onGrowScroll);
-    _loadUserAndData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF020617),
+          statusBarIconBrightness: Brightness.light,
+        ),
+      );
+      _loadUserAndData();
+    });
   }
 
   Future<void> _loadUserAndData() async {
@@ -97,7 +105,6 @@ class _NetworkScreenState extends State<NetworkScreen>
           _loadPendingConnections(silent: true),
         ]);
 
-        // suggestions refresh only if NOT searching
         if (_searchCtrl.text.trim().length < 2) {
           await _loadSuggestions(reset: true, silent: true);
         }
@@ -226,13 +233,39 @@ class _NetworkScreenState extends State<NetworkScreen>
     });
   }
 
+  // ✅ FIXED: PERFECT SMOOTH NAVIGATION - ZERO WHITE FLASH
   void _openProfileScreen(String userId) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => OtherProfileScreen(userId: userId)),
-    ).then((_) async {
-      if (!mounted) return;
-      await _refreshGrow();
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            OtherProfileScreen(userId: userId),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          
+          var tween = Tween(begin: begin, end: end).chain(
+            CurveTween(curve: curve),
+          );
+          
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        opaque: false,
+        barrierColor: Colors.black54,
+      ),
+    ).then((_) {
+      if (mounted) {
+        _refreshGrow();
+      }
     });
   }
 
@@ -257,7 +290,6 @@ class _NetworkScreenState extends State<NetworkScreen>
         searchResults.removeWhere((u) => u['id']?.toString() == otherUserId);
       });
 
-      // show in pending immediately
       await _loadPendingConnections();
     }
   }
@@ -372,112 +404,158 @@ class _NetworkScreenState extends State<NetworkScreen>
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    _searchCtrl.dispose();
+    _searchDebounce?.cancel();
+    _autoRefreshTimer?.cancel();
+    _growScroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const bgColor = Color(0xFF020617);
     const cardColor = Color(0xFF020817);
     const borderColor = Color(0xFF1F2937);
     const accent = Color(0xFF0EA5E9);
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF020617),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
         backgroundColor: bgColor,
-        elevation: 0,
-        toolbarHeight: 80,
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: _goFeed,
-        ),
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Row(
-                children: [
-                  Text(
-                    'My Network',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 0),
-              child: Container(
-                height: 38,
-                margin: const EdgeInsets.only(right: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF020817),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: borderColor),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+        resizeToAvoidBottomInset: false,
+        appBar: AppBar(
+          backgroundColor: bgColor,
+          elevation: 0,
+          toolbarHeight: 80,
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _goFeed,
+          ),
+          titleSpacing: 0,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(right: 16.0),
                 child: Row(
                   children: [
-                    const Icon(Icons.search,
-                        color: Color(0xFF6B7280), size: 20),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: const TextStyle(fontSize: 14, color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: 'Search',
-                          hintStyle: TextStyle(color: Color(0xFF6B7280)),
-                          border: InputBorder.none,
-                          isDense: true,
-                        ),
-                        onChanged: _onSearchChanged,
+                    Text(
+                      'My Network',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (_searchCtrl.text.isNotEmpty)
-                      GestureDetector(
-                        onTap: () {
-                          _searchCtrl.clear();
-                          setState(() {
-                            searchResults.clear();
-                            searching = false;
-                          });
-                        },
-                        child: const Icon(Icons.close,
-                            color: Colors.white70, size: 18),
-                      ),
                   ],
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0),
+                child: Container(
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF020817),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: borderColor),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search,
+                          color: Color(0xFF6B7280), size: 20),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchCtrl,
+                          style: const TextStyle(fontSize: 14, color: Colors.white),
+                          decoration: const InputDecoration(
+                            hintText: 'Search',
+                            hintStyle: TextStyle(color: Color(0xFF6B7280)),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: _onSearchChanged,
+                        ),
+                      ),
+                      if (_searchCtrl.text.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchCtrl.clear();
+                            setState(() {
+                              searchResults.clear();
+                              searching = false;
+                            });
+                          },
+                          child: const Icon(Icons.close,
+                              color: Colors.white70, size: 18),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: accent,
+            labelColor: Colors.white,
+            unselectedLabelColor: const Color(0xFF6B7280),
+            splashFactory: NoSplash.splashFactory,
+            overlayColor: MaterialStateProperty.all(Colors.transparent),
+            tabs: const [
+              Tab(text: 'Grow'),
+              Tab(text: 'Requests'),
+            ],
+          ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: accent,
-          labelColor: Colors.white,
-          unselectedLabelColor: const Color(0xFF6B7280),
-          tabs: const [
-            Tab(text: 'Grow'),
-            Tab(text: 'Requests'),
-          ],
-        ),
+        body: myUserId == null
+            ? const Center(child: CircularProgressIndicator(color: accent))
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildGrowTab(cardColor, borderColor, accent),
+                  _buildRequestsTab(cardColor, borderColor, accent),
+                ],
+              ),
       ),
-      body: myUserId == null
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+    );
+  }
+
+  // 🔥 SIMPLE AVATAR - NO HERO, NO FLASH
+  Widget _buildAvatar({
+    required String profilePic,
+    required Color accent,
+  }) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: accent,
+      ),
+      child: profilePic.isNotEmpty
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.network(
+                profilePic,
+                fit: BoxFit.cover,
+                width: 48,
+                height: 48,
+                errorBuilder: (context, error, stackTrace) =>
+                    Icon(Icons.person, color: Colors.white, size: 24),
+              ),
             )
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildGrowTab(cardColor, borderColor, accent),
-                _buildRequestsTab(cardColor, borderColor, accent),
-              ],
-            ),
+          : Icon(Icons.person, color: Colors.white, size: 24),
     );
   }
 
@@ -490,7 +568,6 @@ class _NetworkScreenState extends State<NetworkScreen>
 
     final bool isSearchMode = _searchCtrl.text.trim().length >= 2;
     final list = isSearchMode ? searchResults : suggestions;
-
     final bool isEmptyAll = pendingConnections.isEmpty && list.isEmpty;
 
     return RefreshIndicator(
@@ -562,8 +639,7 @@ class _NetworkScreenState extends State<NetworkScreen>
               child: Padding(
                 padding: EdgeInsets.all(20),
                 child: Center(
-                  child:
-                      CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+                  child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
                 ),
               ),
             ),
@@ -613,7 +689,6 @@ class _NetworkScreenState extends State<NetworkScreen>
     );
   }
 
-  // ✅ UPDATED: keep name/city in single line properly
   Widget _buildPendingCard(
     Map<String, dynamic> p,
     int index,
@@ -638,17 +713,14 @@ class _NetworkScreenState extends State<NetworkScreen>
         borderRadius: BorderRadius.circular(12),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: profilePic.isNotEmpty
-              ? CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  backgroundImage: NetworkImage(profilePic),
-                )
-              : CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  child: const Icon(Icons.person, color: Colors.white),
-                ),
+          leading: SizedBox(
+            width: 48,
+            height: 48,
+            child: _buildAvatar(
+              profilePic: profilePic,
+              accent: accent,
+            ),
+          ),
           title: Text(
             name,
             maxLines: 1,
@@ -681,8 +753,7 @@ class _NetworkScreenState extends State<NetworkScreen>
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFF10B981),
                   borderRadius: BorderRadius.circular(20),
@@ -705,7 +776,6 @@ class _NetworkScreenState extends State<NetworkScreen>
     );
   }
 
-  // ✅ UPDATED: keep name/city in single line properly
   Widget _buildSuggestionCard(
     Map<String, dynamic> u,
     int index,
@@ -730,17 +800,14 @@ class _NetworkScreenState extends State<NetworkScreen>
         borderRadius: BorderRadius.circular(12),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: profilePic.isNotEmpty
-              ? CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  backgroundImage: NetworkImage(profilePic),
-                )
-              : CircleAvatar(
-                  radius: 24,
-                  backgroundColor: accent,
-                  child: const Icon(Icons.person, color: Colors.white),
-                ),
+          leading: SizedBox(
+            width: 48,
+            height: 48,
+            child: _buildAvatar(
+              profilePic: profilePic,
+              accent: accent,
+            ),
+          ),
           title: Text(
             name,
             maxLines: 1,
@@ -817,15 +884,13 @@ class _NetworkScreenState extends State<NetworkScreen>
                     Expanded(
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor: accent,
-                            backgroundImage: profilePic.isNotEmpty
-                                ? NetworkImage(profilePic)
-                                : null,
-                            child: profilePic.isNotEmpty
-                                ? null
-                                : const Icon(Icons.person, color: Colors.white),
+                          SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: _buildAvatar(
+                              profilePic: profilePic,
+                              accent: accent,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -899,15 +964,5 @@ class _NetworkScreenState extends State<NetworkScreen>
         },
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _autoRefreshTimer?.cancel();
-    _searchDebounce?.cancel();
-    _searchCtrl.dispose();
-    _growScroll.dispose();
-    _tabController.dispose();
-    super.dispose();
   }
 }

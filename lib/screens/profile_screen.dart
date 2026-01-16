@@ -1,11 +1,12 @@
-import 'package:dobyob_1/screens/dobyob_session_manager.dart';
+import 'package:dobyob_1/screens/dobyob_session_manager.dart'; 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'edit_profile_screen.dart';
 import 'connections_screen.dart';
+import 'package:flutter/services.dart';
 
-// Name/title साठी – प्रत्येक शब्दाचा first letter capital
 extension StringTitleCase on String {
   String toTitleCase() {
     if (trim().isEmpty) return '';
@@ -24,13 +25,14 @@ class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onBackToFeed});
 
   @override
-  State<ProfileScreen> createState() => ProfileScreenState(); // ✅ CHANGED
+  State<ProfileScreen> createState() => ProfileScreenState();
 }
 
-// ✅ CHANGED: underscore removed so HomeShell GlobalKey can access this State
 class ProfileScreenState extends State<ProfileScreen> {
   String userId = "";
-  String userDob = "";
+  int? userDobDay;
+  int? userDobMonth;
+  int? userDobYear;
   String userName = "";
   String userBusiness = "";
   String userProfession = "";
@@ -43,9 +45,7 @@ class ProfileScreenState extends State<ProfileScreen> {
   String userAddress = "";
   String userEducation = "";
   List<String> userEducationList = [];
-
   String userAbout = "";
-
   String userProfilePicUrl = "";
   int connectionsCount = 0;
 
@@ -57,28 +57,61 @@ class ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _initAndLoad();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF020617),
+          statusBarIconBrightness: Brightness.light,
+        ),
+      );
+      _bootstrap();
+    });
   }
 
-  Future<void> _initAndLoad() async {
+  Future<void> _bootstrap() async {
     final session = await DobYobSessionManager.getInstance();
+
+    final ok = await session.validateSession();
+    if (!ok) {
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+      return;
+    }
+
     final uidInt = await session.getUserId();
-    if (uidInt == null) return;
+    if (uidInt == null) {
+      await session.clearSession();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+      return;
+    }
+
     userId = uidInt.toString();
     await loadProfile();
   }
 
-  // ✅ remains public so HomeShell can call: profileKey.currentState?.loadProfile()
   Future<void> loadProfile() async {
-    // ✅ Small guard: if HomeShell calls early, ensure userId available
+    final session = await DobYobSessionManager.getInstance();
+
+    final ok = await session.validateSession();
+    if (!ok) {
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+      return;
+    }
+
     if (userId.isEmpty) {
-      final session = await DobYobSessionManager.getInstance();
       final uidInt = await session.getUserId();
-      if (uidInt == null) return;
+      if (uidInt == null) {
+        await session.clearSession();
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
+        return;
+      }
       userId = uidInt.toString();
     }
 
-    setState(() => isLoading = true);
+    if (mounted) setState(() => isLoading = true);
 
     final userFuture = apiService.getProfile(userId);
     final consFuture = apiService.getMyConnections(userId);
@@ -87,6 +120,25 @@ class ProfileScreenState extends State<ProfileScreen> {
     final myConnections = await consFuture;
 
     if (!mounted) return;
+
+    userDobDay = user?['dob_day']?.toString().isNotEmpty == true 
+        ? int.tryParse(user!['dob_day'].toString()) 
+        : null;
+    userDobMonth = user?['dob_month']?.toString().isNotEmpty == true 
+        ? int.tryParse(user!['dob_month'].toString()) 
+        : null;
+    userDobYear = user?['dob_year']?.toString().isNotEmpty == true 
+        ? int.tryParse(user!['dob_year'].toString()) 
+        : null;
+
+    if (userDobDay != null && userDobMonth != null && userDobYear != null) {
+      final dobForSession = DateTime(userDobYear!, userDobMonth!, userDobDay!);
+      final sessionDob = DateFormat('dd-MM-yyyy').format(dobForSession);
+      await session.setDob(sessionDob);
+      if (kDebugMode) {
+        print('Profile → Session DOB (dd-MM-yyyy): "$sessionDob"');
+      }
+    }
 
     setState(() {
       isLoading = false;
@@ -101,10 +153,9 @@ class ProfileScreenState extends State<ProfileScreen> {
         userCountry = user['country'] ?? "";
         userEmail = user['email'] ?? "";
         userMobile = user['phone'] ?? "";
-        userDob = user['date_of_birth'] ?? "";
+
         userAddress = user['address'] ?? "";
         userEducation = user['education'] ?? "";
-
         userAbout = (user['about'] ?? "").toString();
 
         if (userEducation.trim().isNotEmpty) {
@@ -117,7 +168,6 @@ class ProfileScreenState extends State<ProfileScreen> {
           userEducationList = [];
         }
 
-        // ✅ count update always from latest API
         connectionsCount = myConnections.length;
 
         final rawPic = (user['profile_pic'] ?? "").toString();
@@ -133,13 +183,9 @@ class ProfileScreenState extends State<ProfileScreen> {
   }
 
   String get dobLabel {
-    if (userDob.isEmpty) return "";
-    try {
-      final d = DateTime.parse(userDob);
-      return DateFormat('dd/MM/yyyy').format(d);
-    } catch (_) {
-      return userDob;
-    }
+    if (userDobDay == null || userDobMonth == null || userDobYear == null) return "";
+    final dt = DateTime(userDobYear!, userDobMonth!, userDobDay!);
+    return DateFormat('dd/MM/yyyy').format(dt);
   }
 
   Future<void> _logout() async {
@@ -149,14 +195,11 @@ class ProfileScreenState extends State<ProfileScreen> {
 
       if (uidInt != null) {
         await apiService.logout(userId: uidInt.toString());
-        await session.clearSession();
-        if (!mounted) return;
-        Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
-      } else {
-        await session.clearSession();
-        if (!mounted) return;
-        Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
       }
+
+      await session.clearSession();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/intro', (route) => false);
     } catch (_) {
       final session = await DobYobSessionManager.getInstance();
       await session.clearSession();
@@ -177,6 +220,45 @@ class ProfileScreenState extends State<ProfileScreen> {
     } else {
       nav.pushReplacementNamed('/home');
     }
+  }
+
+  // ✅ PERFECT SMOOTH NAVIGATION - NO WHITE FLASH
+  void _navigateToConnections() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => 
+            ConnectionsScreen(userId: userId),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          
+          var tween = Tween(begin: begin, end: end).chain(
+            CurveTween(curve: curve),
+          );
+          
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        opaque: false, // ✅ Key for no flash
+        barrierColor: Colors.black54, // ✅ Dark barrier
+      ),
+    ).then((_) {
+      // ✅ No immediate reload - only if needed
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          loadProfile();
+        }
+      });
+    });
   }
 
   @override
@@ -200,6 +282,10 @@ class ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: bgColor,
         elevation: 0,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF020617),
+          statusBarIconBrightness: Brightness.light,
+        ),
         automaticallyImplyLeading: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -331,7 +417,9 @@ class ProfileScreenState extends State<ProfileScreen> {
                                         initialCity: userCity,
                                         initialState: userState,
                                         initialCountry: userCountry,
-                                        initialDob: userDob,
+                                        initialDobDay: userDobDay,
+                                        initialDobMonth: userDobMonth,
+                                        initialDobYear: userDobYear,
                                         initialEmail: userEmail,
                                         initialMobile: userMobile,
                                         initialAddress: userAddress,
@@ -351,24 +439,36 @@ class ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-
-                          // ✅ already correct: back from connections -> refresh count
+                          // ✅ SMOOTH CONNECTIONS NAVIGATION - NO FLASH
                           GestureDetector(
-                            onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ConnectionsScreen(userId: userId),
-                                ),
-                              );
-                              await loadProfile();
-                            },
-                            child: Text(
-                              connectionsLabel,
-                              style: const TextStyle(
-                                color: Color(0xFF0EA5E9),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
+                            onTap: _navigateToConnections,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accent.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(25),
+                                border: Border.all(color: accent.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.people_outline, 
+                                    color: accent, 
+                                    size: 16
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    connectionsLabel,
+                                    style: const TextStyle(
+                                      color: accent,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

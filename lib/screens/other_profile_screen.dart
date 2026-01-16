@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
+import 'package:flutter/services.dart';
 
 class OtherProfileScreen extends StatefulWidget {
   final String userId;
@@ -45,7 +46,9 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _init();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   Future<void> _init() async {
@@ -223,10 +226,11 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                 ListTile(
                   leading: const Icon(Icons.person_remove, color: Colors.white),
                   title: const Text('Remove connection', style: TextStyle(color: Colors.white)),
-                  onTap: () async {
+                  onTap: () {
                     Navigator.pop(ctx);
-                    await Future.delayed(const Duration(milliseconds: 120));
-                    await _handleUnfriend();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _handleUnfriend();
+                    });
                   },
                 ),
                 const Divider(color: Colors.white12, height: 1),
@@ -250,24 +254,34 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
   Widget build(BuildContext context) {
     const bg = Color(0xFF020617);
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Profile', style: TextStyle(color: Colors.white)),
+    // 🔥 PERFECT SMOOTH NAVIGATION - Single AnnotatedRegion
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF020617),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF0EA5E9)))
-          : (userData == null
-              ? const Center(
-                  child: Text('User not found', style: TextStyle(color: Colors.white70)),
-                )
-              : _buildBody()),
+      child: Scaffold(
+        backgroundColor: bg,
+        resizeToAvoidBottomInset: false,
+        appBar: AppBar(
+          backgroundColor: bg,
+          elevation: 0,
+          automaticallyImplyLeading: false, // 🔥 Prevents conflicts
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text('Profile', style: TextStyle(color: Colors.white)),
+        ),
+        body: loading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF0EA5E9)))
+            : (userData == null
+                ? const Center(
+                    child: Text('User not found', style: TextStyle(color: Colors.white70)),
+                  )
+                : _buildBody()),
+      ),
     );
   }
 
@@ -328,6 +342,7 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🔥 HERO ANIMATION - Matches NetworkScreen tags
           Container(
             decoration: BoxDecoration(
               color: cardBg,
@@ -342,13 +357,17 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: const Color(0xFF1F2937),
-                        backgroundImage: (pic != null) ? NetworkImage(pic) : null,
-                        child: (pic == null)
-                            ? const Icon(Icons.person, size: 34, color: Colors.white54)
-                            : null,
+                      // 🔥 HERO TAG - Perfect match with NetworkScreen
+                      Hero(
+                        tag: 'profile_${widget.userId}',
+                        child: CircleAvatar(
+                          radius: 34,
+                          backgroundColor: const Color(0xFF1F2937),
+                          backgroundImage: (pic != null) ? NetworkImage(pic) : null,
+                          child: (pic == null)
+                              ? const Icon(Icons.person, size: 34, color: Colors.white54)
+                              : null,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -402,7 +421,6 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                // ✅ ONLY CHANGE: show popup instead of opening messages
                                 onPressed: _showComingSoonPopup,
                                 icon: const Icon(Icons.message, size: 20),
                                 label: const Text(

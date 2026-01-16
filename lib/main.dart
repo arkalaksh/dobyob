@@ -8,16 +8,15 @@ import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/login_screen.dart';
 import 'package:dobyob_1/screens/signup_screen.dart';
 
-import 'package:dobyob_1/screens/home_shell.dart'; // ✅ NEW
+import 'package:dobyob_1/screens/home_shell.dart';
 import 'package:dobyob_1/screens/create_post_screen.dart';
 import 'package:dobyob_1/screens/profile_screen.dart';
 import 'package:dobyob_1/screens/invite_screen.dart';
-import 'package:dobyob_1/screens/my_network_screen.dart'; // file name same (class inside = NetworkScreen)
+import 'package:dobyob_1/screens/my_network_screen.dart';
 import 'package:dobyob_1/screens/explore_app_page.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Firebase.initializeApp();
 
   String fcmToken = '';
@@ -32,7 +31,17 @@ void main() async {
   }
 
   final session = await DobYobSessionManager.getInstance();
-  final bool isLoggedIn = await session.isLoggedIn();
+
+  // ✅ DEBUG: local prefs
+  final localLoggedIn = await session.isLoggedIn();
+  final localUserId = await session.getUserId();
+  // ignore: avoid_print
+  print('🧪 LOCAL isLoggedIn=$localLoggedIn, userId=$localUserId');
+
+  // ✅ Server validation (auto logout only if status=invalid)
+  final bool isLoggedIn = await session.validateSession();
+  // ignore: avoid_print
+  print('🧪 validateSession() => $isLoggedIn');
 
   runApp(MyApp(isLoggedIn: isLoggedIn, fcmToken: fcmToken));
 }
@@ -49,6 +58,9 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ignore: avoid_print
+    print('🧪 initialRoute => ${isLoggedIn ? '/home' : '/intro'}');
+
     return MaterialApp(
       title: 'DobYob',
       debugShowCheckedModeBanner: false,
@@ -65,17 +77,12 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(fcmToken: fcmToken),
         '/signup': (context) => SignupScreen(fcmToken: fcmToken),
 
-        // ✅ Bottom tabs container
         '/home': (context) => const HomeShell(),
 
-        // ✅ Keep as standalone routes (fallback / direct open)
         '/addpost': (context) => const CreatePostScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/invite': (context) => const InviteScreen(),
-
-        // ✅ Option B: file = my_network_screen.dart पण class = NetworkScreen
         '/network': (context) => const NetworkScreen(),
-
         '/explore': (context) => const DobYobExploreScreen(),
       },
     );

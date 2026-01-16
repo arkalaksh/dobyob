@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
@@ -17,13 +18,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   bool isLoading = false;
   String? myUserId;
-
   String selectedVisibility = "Public";
 
   @override
   void initState() {
     super.initState();
-    _loadUserId();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ✅ FIXED: Status bar consistency - NO WHITE FLASH
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF020617),
+          statusBarIconBrightness: Brightness.light,
+        ),
+      );
+      _loadUserId();
+    });
   }
 
   @override
@@ -49,22 +58,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
-  /// ✅ Always go back to HomeShell Feed tab
-  void _goToFeed({bool posted = false}) {
-    // ✅ Prefer pop with result (FeedScreen waits for this result)
-    if (Navigator.of(context).canPop()) {
-      Navigator.pop(context, posted);
-      return;
-    }
-
-    // ✅ Fallback: try to return to root (avoids pushReplacement that may skip refresh)
-    Navigator.of(context).popUntil((route) => route.isFirst);
+  void _goToFeed({required bool posted}) {
+    Navigator.pop(context, posted);
   }
 
   Future<void> _submitPost() async {
     final content = contentController.text.trim();
 
     if (myUserId == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("User not logged in.")),
       );
@@ -72,6 +74,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
 
     if (content.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Type something before posting!")),
       );
@@ -86,15 +89,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       profilePic: selectedFile,
     );
 
-    setState(() => isLoading = false);
     if (!mounted) return;
+    setState(() => isLoading = false);
 
     if (result['success'] == true) {
-      // (optional) UI clean
       contentController.clear();
       selectedFile = null;
-
-      _goToFeed(posted: true); // ✅ success नंतर feed ला TRUE result
+      _goToFeed(posted: true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message'] ?? "Failed to post")),
@@ -106,12 +107,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     showModalBottomSheet(
       context: context,
       useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // ✅ FIXED: Transparent background
+      barrierColor: Colors.black54,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: SafeArea(
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -121,12 +125,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 Container(
                   width: 40,
                   height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     color: Colors.grey[400],
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(height: 16),
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -147,8 +151,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -175,8 +179,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ),
       onTap: () {
         setState(() => selectedVisibility = title);
-        Navigator.pop(context, true);
-
+        Navigator.pop(context);
       },
     );
   }
@@ -199,9 +202,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       appBar: AppBar(
         backgroundColor: bgColor,
         elevation: 0,
+        // ✅ FIXED: Consistent status bar
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Color(0xFF020617),
+          statusBarIconBrightness: Brightness.light,
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => _goToFeed(posted: false), // ✅ back => feed (false)
+          onPressed: () => _goToFeed(posted: false),
         ),
         title: const Text(
           "Create Post",
@@ -217,7 +225,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             child: TextButton(
               onPressed: isLoading ? null : _submitPost,
               child: Text(
-                "Post",
+                isLoading ? "Posting..." : "Post",
                 style: TextStyle(
                   color: isLoading ? Colors.white54 : Colors.white,
                   fontWeight: FontWeight.w600,
@@ -228,114 +236,132 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  radius: 22,
-                  backgroundColor: Color(0xFF111827),
-                  child: Icon(Icons.person, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                InkWell(
-                  onTap: _openVisibilitySheet,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).padding.bottom + 16,
+            top: 10,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Color(0xFF111827),
+                    child: Icon(Icons.person, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _openVisibilitySheet,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF4B5563)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          selectedVisibility,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFF4B5563)),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down,
-                            color: Colors.white, size: 18),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              selectedVisibility,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 18),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: contentController,
-              minLines: 4,
-              maxLines: 6,
-              style: const TextStyle(fontSize: 16, color: Colors.white),
-              cursorColor: accent,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: "What do you want to talk about?",
-                hintStyle: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+                ],
               ),
-            ),
-            if (selectedFile != null) ...[
-              const SizedBox(height: 10),
-              isImage
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.file(selectedFile!, height: 120),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF111827),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: borderColor),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.insert_drive_file,
-                              size: 28, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              selectedFile!.path.split('/').last,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 14, color: Colors.white),
+              const SizedBox(height: 15),
+              Expanded(
+                child: TextField(
+                  controller: contentController,
+                  minLines: 4,
+                  maxLines: 6,
+                  maxLength: 1000,
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                  cursorColor: accent,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: "What do you want to talk about?",
+                    hintStyle: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+                    counterText: "",
+                  ),
+                ),
+              ),
+              if (selectedFile != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 120,
+                  child: isImage
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.file(
+                            selectedFile!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: const Color(0xFF111827),
+                              child: const Icon(Icons.error, color: Colors.white54),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-            ],
-            const Spacer(),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: pickFile,
-                  icon: const Icon(Icons.attach_file, color: accent, size: 28),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.calendar_today_outlined,
-                      color: accent, size: 26),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.add, color: accent, size: 28),
+                        )
+                      : Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111827),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.insert_drive_file, size: 28, color: Colors.white),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  selectedFile!.path.split('/').last,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-          ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: pickFile,
+                    icon: const Icon(Icons.attach_file, color: accent, size: 28),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.calendar_today_outlined, color: accent, size: 26),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add, color: accent, size: 28),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,11 +1,13 @@
 import 'dart:io' show Platform;
 
+import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/dobyob_wizard.dart';
 import 'package:dobyob_1/screens/otp_screen.dart';
+import 'package:dobyob_1/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
-import 'package:dobyob_1/services/api_service.dart';
 
 class SignupScreen extends StatefulWidget {
   final String fcmToken;
@@ -22,6 +24,8 @@ class _SignupScreenState extends State<SignupScreen> {
   final phoneController = TextEditingController();
 
   final ApiService apiService = ApiService();
+
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -55,10 +59,17 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       final parts = dob.split('/');
       if (parts.length != 3) return null;
+
       final day = int.parse(parts[0]);
       final month = int.parse(parts[1]);
       final year = int.parse(parts[2]);
-      return DateTime(year, month, day);
+
+      final dt = DateTime(year, month, day);
+
+      // ✅ strict validation (invalid dates should fail)
+      if (dt.year != year || dt.month != month || dt.day != day) return null;
+
+      return dt;
     } catch (_) {
       return null;
     }
@@ -77,6 +88,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   String getApiDate(String localDate) {
+    // localDate = dd/MM/yyyy -> yyyy-MM-dd
     final parts = localDate.split('/');
     if (parts.length == 3) {
       return '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
@@ -84,7 +96,16 @@ class _SignupScreenState extends State<SignupScreen> {
     return localDate;
   }
 
+  String getSessionDob(String localDate) {
+    // localDate = dd/MM/yyyy -> dd-MM-yyyy (Feed priority)
+    final dt = _parseDob(localDate);
+    if (dt == null) return localDate;
+    return DateFormat('dd-MM-yyyy').format(dt);
+  }
+
   Future<void> _sendOtp() async {
+    if (_isSending) return;
+
     final name = fullNameController.text.trim();
     final email = emailController.text.trim();
     final dobLocal = dobController.text.trim(); // dd/MM/yyyy
@@ -92,7 +113,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
     if (name.isEmpty || email.isEmpty || dobLocal.isEmpty || phone.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
@@ -130,77 +152,113 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     final dobApi = getApiDate(dobLocal); // yyyy-MM-dd
+    final dobSession = getSessionDob(dobLocal); // dd-MM-yyyy
 
-    final response = await apiService.sendOtp(
-      fullName: name,
-      email: email,
-      dateOfBirth: dobApi,
-      phone: phone,
-      deviceToken: widget.fcmToken,
-      deviceType: Platform.isAndroid ? 'android' : 'ios',
-    );
+    setState(() => _isSending = true);
 
-    if (!mounted) return;
-
-    if (response['success'] == true) {
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => OtpScreen(
-            email: email,
-            fullName: name,
-            dateOfBirth: dobApi,
-            phone: phone,
-            deviceToken: widget.fcmToken,
-            deviceType: Platform.isAndroid ? 'android' : 'ios',
-          ),
-        ),
+    try {
+      final response = await apiService.sendOtp(
+        fullName: name,
+        email: email,
+        dateOfBirth: dobApi,
+        phone: phone,
+        deviceToken: widget.fcmToken,
+        deviceType: Platform.isAndroid ? 'android' : 'ios',
       );
 
       if (!mounted) return;
 
-      if (result is Map && result['verified'] == true) {
-        final userId = (result['userId'] ?? '').toString();
-        if (userId.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('UserId missing after OTP verification')),
-          );
-          return;
-        }
-
-        Navigator.pushReplacement(
+      if (response['success'] == true) {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => DobYobWizard(
-              userId: userId,
-              fullName: name,
+            builder: (context) => OtpScreen(
               email: email,
-              phone: phone,
+              fullName: name,
               dateOfBirth: dobApi,
+              phone: phone,
+              deviceToken: widget.fcmToken,
+              deviceType: Platform.isAndroid ? 'android' : 'ios',
             ),
           ),
         );
-      }
-    } else {
-      final errorMsg = (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
 
-      if (errorMsg.contains('already registered') || errorMsg.contains('Please log in')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account already exists! Taking you to login...'),
-            backgroundColor: Color.fromARGB(255, 11, 65, 88),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (!mounted) return;
 
-        Future.delayed(const Duration(seconds: 2), () {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).clearSnackBars();
-          Navigator.pushReplacementNamed(context, '/login');
-        });
+        if (result is Map && result['verified'] == true) {
+          final userIdStr = (result['userId'] ?? '').toString();
+          if (userIdStr.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('UserId missing after OTP verification')),
+            );
+            return;
+          }
+
+          final userIdInt = int.tryParse(userIdStr);
+          if (userIdInt == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Invalid userId after OTP verification')),
+            );
+            return;
+          }
+
+          // ✅ Save DOB + user session (IMPORTANT for FeedScreen)
+          final session = await DobYobSessionManager.getInstance();
+          await session.setDob(dobSession);
+
+          // ✅ This is the main missing part: save userId (and basics) in session
+          await session.saveUserSession(
+            userId: userIdInt,
+            name: name,
+            email: email,
+            phone: phone,
+            deviceToken: widget.fcmToken,
+            deviceType: Platform.isAndroid ? 'android' : 'ios',
+            profilePicture: '',
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DobYobWizard(
+                userId: userIdStr,
+                fullName: name,
+                email: email,
+                phone: phone,
+                dateOfBirth: dobApi,
+              ),
+            ),
+          );
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+        if (!mounted) return;
+
+        final errorMsg =
+            (response['error'] ?? response['message'] ?? 'Failed to send OTP').toString();
+
+        if (errorMsg.contains('already registered') || errorMsg.contains('Please log in')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account already exists! Taking you to login...'),
+              backgroundColor: Color.fromARGB(255, 11, 65, 88),
+              duration: Duration(seconds: 2),
+            ),
+          );
+
+          Future.delayed(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).clearSnackBars();
+            Navigator.pushReplacementNamed(context, '/login');
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -243,8 +301,10 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               const SizedBox(height: 20),
 
-              const Text('Full Name',
-                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
+              const Text(
+                'Full Name',
+                style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
               const SizedBox(height: 4),
               TextField(
                 controller: fullNameController,
@@ -271,8 +331,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 12),
 
-              const Text('Email address',
-                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
+              const Text(
+                'Email address',
+                style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
               const SizedBox(height: 4),
               TextField(
                 controller: emailController,
@@ -280,7 +342,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 cursorColor: const Color(0xFF38BDF8),
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: 'Enter your email ',
+                  hintText: 'Enter your email',
                   hintStyle: const TextStyle(color: Color(0xFF6B7280)),
                   filled: true,
                   fillColor: fieldColor,
@@ -298,8 +360,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 12),
 
-              const Text('Date of Birth',
-                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
+              const Text(
+                'Date of Birth',
+                style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
               const SizedBox(height: 4),
               TextField(
                 controller: dobController,
@@ -319,7 +383,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime.now(),
+                        initialDate: DateTime.now().subtract(const Duration(days: 365 * 18)),
                         firstDate: DateTime(1900),
                         lastDate: DateTime.now(),
                       );
@@ -345,8 +409,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: 12),
 
-              const Text('Phone number',
-                  style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500)),
+              const Text(
+                'Phone number',
+                style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
               const SizedBox(height: 4),
               IntlPhoneField(
                 controller: phoneController,
@@ -371,7 +437,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 dropdownIcon: const Icon(Icons.arrow_drop_down, color: Color(0xFF9CA3AF)),
                 initialCountryCode: 'IN',
                 onChanged: (phone) {
-                  phoneController.text = phone.number;
+                  phoneController.text = phone.number; // only local number
                 },
               ),
 
@@ -385,10 +451,14 @@ class _SignupScreenState extends State<SignupScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  onPressed: _sendOtp,
-                  child: const Text(
-                    'Send OTP',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                  onPressed: _isSending ? null : _sendOtp,
+                  child: Text(
+                    _isSending ? 'Sending...' : 'Send OTP',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -414,17 +484,14 @@ class DobInputFormatter extends TextInputFormatter {
     final rawText = newValue.text;
     final rawSelection = newValue.selection.end;
 
-    // Digits count before cursor (in whatever user has typed so far)
     final safeSel = rawSelection.clamp(0, rawText.length);
     final digitsBeforeCursor = _countDigits(rawText.substring(0, safeSel));
 
-    // Keep only digits + limit to 8 digits (ddMMyyyy)
     final digits = rawText.replaceAll(RegExp(r'[^0-9]'), '');
     final limited = digits.length > _maxDigits ? digits.substring(0, _maxDigits) : digits;
 
     final formatted = _format(limited);
 
-    // Map cursor back based on how many digits were before cursor
     final db = digitsBeforeCursor.clamp(0, limited.length);
     final newCursor = _cursorForDigitIndex(db).clamp(0, formatted.length);
 
@@ -446,10 +513,9 @@ class DobInputFormatter extends TextInputFormatter {
     return b.toString();
   }
 
-  // digitsBefore: 0..8  => cursor position in "dd/MM/yyyy"
   int _cursorForDigitIndex(int digitsBefore) {
-    if (digitsBefore <= 2) return digitsBefore;         // dd
-    if (digitsBefore <= 4) return digitsBefore + 1;     // dd/MM (one slash)
-    return digitsBefore + 2;                            // dd/MM/yyyy (two slashes)
+    if (digitsBefore <= 2) return digitsBefore; // dd
+    if (digitsBefore <= 4) return digitsBefore + 1; // dd/MM
+    return digitsBefore + 2; // dd/MM/yyyy
   }
 }
