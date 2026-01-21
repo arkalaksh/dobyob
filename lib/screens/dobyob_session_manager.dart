@@ -263,4 +263,27 @@ class DobYobSessionManager {
       return true; // Offline safe
     }
   }
+  /// 🔥 Helper: DOB → day/month/year for APIs
+Future<Map<String, int>> getDobParts() async {
+  final dob = await getDob(); // DD-MM-YYYY
+  if (dob == null || dob.isEmpty) {
+    return {'day': 0, 'month': 0, 'year': 0};
+  }
+
+  try {
+    final parts = dob.split('-');
+    if (parts.length != 3) {
+      return {'day': 0, 'month': 0, 'year': 0};
+    }
+
+    return {
+      'day': int.tryParse(parts[0]) ?? 0,
+      'month': int.tryParse(parts[1]) ?? 0,
+      'year': int.tryParse(parts[2]) ?? 0,
+    };
+  } catch (_) {
+    return {'day': 0, 'month': 0, 'year': 0};
+  }
+}
+
 }

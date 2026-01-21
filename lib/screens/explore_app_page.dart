@@ -14,8 +14,8 @@ class DobYobExploreScreen extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF3D0C6B), // top deep purple
-              Color(0xFF22063E), // bottom darker purple
+              Color(0xFF3D0C6B),
+              Color(0xFF22063E),
             ],
           ),
         ),
@@ -50,7 +50,13 @@ class DobYobExploreScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 20),
+// ✅ LOGO
+Image.asset(
+  'assets/images/dobyob_logo.png',
+  height: 90,
+),
 
+const SizedBox(height: 20),
                 // Welcome message - Updated for DOB/YOB concept
                 const Text(
                   'Connect by your date',

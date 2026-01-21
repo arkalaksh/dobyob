@@ -212,6 +212,7 @@ class _SignupScreenState extends State<SignupScreen> {
             name: name,
             email: email,
             phone: phone,
+            
             deviceToken: widget.fcmToken,
             deviceType: Platform.isAndroid ? 'android' : 'ios',
             profilePicture: '',

@@ -6,7 +6,6 @@ class DobYobIntroScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // फक्त background color Wakie सारखा, बाकी सर्व content जसाच्या तसा
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -14,59 +13,48 @@ class DobYobIntroScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF3D0C6B), // top deep purple
-              Color(0xFF22063E), // bottom darker purple
-            ],
+            colors: [Color(0xFF3D0C6B), Color(0xFF22063E)],
           ),
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // TOP: DobYob logo + name
-                Column(
-                  children: [
-                    const SizedBox(height: 44),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF007AFF),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.blur_on,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'DobYob',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+       child: SafeArea(
+  child: Padding(
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        // 🔥 TOP: DobYob FULL LOGO (image already contains name)
+        Column(
+          children: [
+            const SizedBox(height: 55),
+            Center(
+              child: Image.asset(
+                'assets/images/dobyob_logo.png',
+                height: 60,          // ✅ adjust if needed (60–70)
+                fit: BoxFit.contain, // ✅ FULL logo visible, no crop
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 60,
+                    width: 160,
+                    color: Colors.red,
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Logo not found',
+                      style: TextStyle(color: Colors.white),
                     ),
-                    const SizedBox(height: 26),
-                  ],
-                ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 26),
+          ],
+        ),
 
-                // MIDDLE: main text + buttons
+                // MIDDLE: main text
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
-                      'Real people.',
+                      'A Network.',
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
@@ -76,7 +64,7 @@ class DobYobIntroScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Real conversations.',
+                      'You Were Born With.',
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
@@ -98,6 +86,7 @@ class DobYobIntroScreen extends StatelessWidget {
                   ],
                 ),
 
+                // BUTTONS
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -106,8 +95,7 @@ class DobYobIntroScreen extends StatelessWidget {
                       height: 50,
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.pushReplacementNamed(
-                              context, '/signup');
+                          Navigator.pushReplacementNamed(context, '/signup');
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0ACF83),
@@ -129,7 +117,7 @@ class DobYobIntroScreen extends StatelessWidget {
                     const SizedBox(height: 10),
                     TextButton(
                       onPressed: () {
-                        Navigator.pushNamed(context, '/explore'); // Add this route
+                        Navigator.pushNamed(context, '/explore');
                       },
                       child: const Text(
                         'Explore the app',

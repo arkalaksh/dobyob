@@ -148,62 +148,72 @@ class _OtherProfileScreenState extends State<OtherProfileScreen> {
       await _loadProfile();
     }
   }
+/// Remove connection action (called after tapping option from bottom sheet)
+Future<void> _handleUnfriend() async {
+  if (userData == null) return;
 
-  /// Unfriend action (called after tapping option from bottom sheet)
-  Future<void> _handleUnfriend() async {
-    if (userData == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F2937),
-        title: const Text('Unfriend', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Are you sure you want to unfriend this user?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Unfriend', style: TextStyle(color: Color(0xFFEF4444))),
-          ),
-        ],
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: const Color(0xFF1F2937),
+      title: const Text(
+        'Remove connection',
+        style: TextStyle(color: Colors.white),
       ),
-    );
+      content: const Text(
+        'Are you sure you want to remove this connection?',
+        style: TextStyle(color: Colors.white70),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text(
+            'Remove',
+            style: TextStyle(color: Color(0xFFEF4444)),
+          ),
+        ),
+      ],
+    ),
+  );
 
-    if (confirm != true) return;
+  if (confirm != true) return;
 
-    final connectionId = (userData!['connection_id'] ?? '').toString();
-    if (connectionId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Missing connection_id')),
-      );
-      return;
-    }
-
-    setState(() => actionLoading = true);
-
-    final res = await _api.unfriendUser(connectionId: connectionId);
-
-    if (!mounted) return;
-    setState(() => actionLoading = false);
-
+  final connectionId = (userData!['connection_id'] ?? '').toString();
+  if (connectionId.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(res['message']?.toString() ?? 'Unfriended')),
+      const SnackBar(content: Text('Missing connection_id')),
     );
-
-    if (res['success'] == true) {
-      setState(() {
-        userData!['connection_status'] = '';
-        userData!.remove('connection_id');
-      });
-      await _loadProfile();
-    }
+    return;
   }
+
+  setState(() => actionLoading = true);
+
+  final res = await _api.unfriendUser(connectionId: connectionId);
+
+  if (!mounted) return;
+  setState(() => actionLoading = false);
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(res['message']?.toString() ?? 'Connection removed'),
+    ),
+  );
+
+  if (res['success'] == true) {
+    setState(() {
+      userData!['connection_status'] = '';
+      userData!.remove('connection_id');
+    });
+    await _loadProfile();
+  }
+}
 
   /// ✅ LinkedIn-style bottom sheet menu for 3-dots
   void _openMoreActionsSheet() {

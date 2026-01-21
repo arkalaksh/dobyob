@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dobyob_1/services/api_service.dart';
 import 'package:dobyob_1/screens/dobyob_session_manager.dart';
 import 'package:dobyob_1/screens/other_profile_screen.dart';
-import 'package:flutter/services.dart';
 
 extension StringTitleCase on String {
   String toTitleCase() {
@@ -47,9 +48,7 @@ class _NetworkScreenState extends State<NetworkScreen>
   bool searching = false;
   List<Map<String, dynamic>> searchResults = [];
 
-  // Auto refresh timer
-  Timer? _autoRefreshTimer;
-  bool _autoRefreshing = false;
+  // ✅ AUTO REFRESH TIMER REMOVED ✅
 
   // Pagination
   static const int _limit = 20;
@@ -88,84 +87,75 @@ class _NetworkScreenState extends State<NetworkScreen>
       _loadSuggestions(reset: true),
     ]);
 
-    _startAutoRefresh();
+    // ✅ AUTO REFRESH REMOVED - No _startAutoRefresh() call
   }
 
-  void _startAutoRefresh() {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) async {
-      if (!mounted) return;
-      if (_autoRefreshing) return;
-      if (myUserId == null) return;
-
-      _autoRefreshing = true;
-      try {
-        await Future.wait([
-          _loadRequests(silent: true),
-          _loadPendingConnections(silent: true),
-        ]);
-
-        if (_searchCtrl.text.trim().length < 2) {
-          await _loadSuggestions(reset: true, silent: true);
-        }
-      } finally {
-        _autoRefreshing = false;
-      }
-    });
-  }
+  // ✅ _startAutoRefresh() METHOD COMPLETELY DELETED ✅
 
   Future<void> _refreshGrow() async {
     await Future.wait([
       _loadPendingConnections(),
       _loadSuggestions(reset: true),
-      if (_searchCtrl.text.trim().length >= 2) _performSearch(_searchCtrl.text),
     ]);
   }
 
-  Future<void> _loadSuggestions({required bool reset, bool silent = false}) async {
-    if (myUserId == null) return;
+  Future<void> _loadSuggestions({
+  required bool reset,
+  bool silent = false,
+}) async {
+  if (myUserId == null) return;
 
-    if (!silent) {
-      setState(() => loadingSuggestions = true);
-    }
-
-    if (reset) {
-      _page = 1;
-      _hasMore = true;
-      _loadingMore = false;
-    }
-
-    final res = await _api.getPeopleSuggestionsV2(
-      userId: myUserId!,
-      page: _page,
-      limit: _limit,
-    );
-
-    if (!mounted) return;
-
-    final list = List<Map<String, dynamic>>.from(res['suggestions'] ?? []);
-    final excluded = _excludedUserIds();
-
-    final filtered = list.where((u) {
-      final id = u['id']?.toString() ?? '';
-      return id.isNotEmpty && !excluded.contains(id);
-    }).toList();
-
-    final bool serverHasMore =
-        (res['has_more'] == true) || (list.length == _limit);
-
-    setState(() {
-      if (reset) {
-        suggestions = filtered;
-      } else {
-        suggestions.addAll(filtered);
-      }
-
-      _hasMore = serverHasMore;
-      loadingSuggestions = false;
-      _loadingMore = false;
-    });
+  if (!silent) {
+    setState(() => loadingSuggestions = true);
   }
+
+  if (reset) {
+    _page = 1;
+    _hasMore = true;
+    _loadingMore = false;
+    suggestions.clear();
+  }
+
+  final res = await _api.getPeopleSuggestions(
+    userId: myUserId!,
+    page: _page,
+    limit: _limit,
+  );
+
+  if (!mounted) return;
+
+  if (res['success'] != true) {
+    debugPrint('❌ Suggestions failed: ${res['message'] ?? res['error']}');
+    if (!silent) {
+      setState(() => loadingSuggestions = false);
+    }
+    return;
+  }
+
+  final List<Map<String, dynamic>> list =
+      List<Map<String, dynamic>>.from(res['suggestions'] ?? []);
+
+  final bool serverHasMore = res['has_more'] == true;
+
+  setState(() {
+    if (reset) {
+      suggestions = list;
+    } else {
+      suggestions.addAll(list);
+    }
+
+    _hasMore = serverHasMore && list.length == _limit;
+    loadingSuggestions = false;
+    _loadingMore = false;
+  });
+
+  // 🔥 THIS IS THE ONLY CHANGE NEEDED!
+  if (!reset) _page++; // Next page for infinite scroll
+
+  debugPrint(
+    '✅ Loaded page $_page | Total=${suggestions.length} | hasMore=$_hasMore',
+  );
+}
 
   Future<void> _loadMore() async {
     if (!_hasMore || _loadingMore) return;
@@ -233,7 +223,6 @@ class _NetworkScreenState extends State<NetworkScreen>
     });
   }
 
-  // ✅ FIXED: PERFECT SMOOTH NAVIGATION - ZERO WHITE FLASH
   void _openProfileScreen(String userId) {
     Navigator.push(
       context,
@@ -408,7 +397,7 @@ class _NetworkScreenState extends State<NetworkScreen>
     _tabController.dispose();
     _searchCtrl.dispose();
     _searchDebounce?.cancel();
-    _autoRefreshTimer?.cancel();
+    // ✅ AUTO REFRESH TIMER CANCEL REMOVED ✅
     _growScroll.dispose();
     super.dispose();
   }
@@ -531,7 +520,7 @@ class _NetworkScreenState extends State<NetworkScreen>
     );
   }
 
-  // 🔥 SIMPLE AVATAR - NO HERO, NO FLASH
+  // ✅ ALL BUILD METHODS SAME AS ORIGINAL ✅
   Widget _buildAvatar({
     required String profilePic,
     required Color accent,
@@ -558,136 +547,142 @@ class _NetworkScreenState extends State<NetworkScreen>
           : Icon(Icons.person, color: Colors.white, size: 24),
     );
   }
-
-  Widget _buildGrowTab(Color cardColor, Color borderColor, Color accent) {
-    if (loadingSuggestions || loadingPending) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
-      );
-    }
-
-    final bool isSearchMode = _searchCtrl.text.trim().length >= 2;
-    final list = isSearchMode ? searchResults : suggestions;
-    final bool isEmptyAll = pendingConnections.isEmpty && list.isEmpty;
-
-    return RefreshIndicator(
-      color: accent,
-      onRefresh: _refreshGrow,
-      child: CustomScrollView(
-        controller: _growScroll,
-        slivers: [
-          if (!isSearchMode && pendingConnections.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${pendingConnections.length} Pending',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ...List.generate(
-                    pendingConnections.length,
-                    (i) => _buildPendingCard(
-                      pendingConnections[i],
-                      i,
-                      cardColor,
-                      borderColor,
-                      accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                isSearchMode
-                    ? 'Search Results (${searchResults.length})'
-                    : 'Suggestions (${suggestions.length})',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-
-          if (isSearchMode && searching)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Center(
-                  child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
-                ),
-              ),
-            ),
-
-          if (isEmptyAll)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'No suggestions right now.',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-              ),
-            ),
-
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                if (i >= list.length) {
-                  if (!isSearchMode && _loadingMore) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                            color: Color(0xFF0EA5E9)),
-                      ),
-                    );
-                  }
-                  return null;
-                }
-
-                return _buildSuggestionCard(
-                  list[i],
-                  i,
-                  cardColor,
-                  borderColor,
-                  accent,
-                );
-              },
-              childCount: list.length + ((!isSearchMode && _loadingMore) ? 1 : 0),
-            ),
-          ),
-        ],
-      ),
+Widget _buildGrowTab(Color cardColor, Color borderColor, Color accent) {
+  if (loadingSuggestions || loadingPending) {
+    return const Center(
+      child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
     );
   }
+
+  final bool isSearchMode = _searchCtrl.text.trim().length >= 2;
+  final list = isSearchMode ? searchResults : suggestions;
+  final bool isEmptyAll = pendingConnections.isEmpty && list.isEmpty;
+
+  return RefreshIndicator(
+    color: accent,
+    onRefresh: _refreshGrow,
+    displacement: 40, // Pull indicator को थोड़ा ऊपर लाने के लिए
+    child: CustomScrollView(
+      controller: _growScroll,
+      physics: const AlwaysScrollableScrollPhysics(), // 🔧 यह line add करो!
+      slivers: [
+        // Pending connections section
+        if (!isSearchMode && pendingConnections.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${pendingConnections.length} Pending',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...List.generate(
+                  pendingConnections.length,
+                  (i) => _buildPendingCard(
+                    pendingConnections[i],
+                    i,
+                    cardColor,
+                    borderColor,
+                    accent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Title section
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              isSearchMode
+                  ? 'Search Results (${searchResults.length})'
+                  : 'Suggestions (${suggestions.length})',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+
+        // Search loading
+        if (isSearchMode && searching)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xFF0EA5E9)),
+              ),
+            ),
+          ),
+
+        // Empty state
+        if (isEmptyAll)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'No suggestions right now.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+          ),
+
+        // Main list
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) {
+              if (i >= list.length) {
+                if (!isSearchMode && _loadingMore) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF0EA5E9)),
+                    ),
+                  );
+                }
+                return null;
+              }
+
+              return _buildSuggestionCard(
+                list[i],
+                i,
+                cardColor,
+                borderColor,
+                accent,
+              );
+            },
+            childCount: list.length + ((!isSearchMode && _loadingMore) ? 1 : 0),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildPendingCard(
     Map<String, dynamic> p,

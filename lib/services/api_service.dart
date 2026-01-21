@@ -247,34 +247,52 @@ class ApiService {
       return {"success": false, "message": "Error: $e"};
     }
   }
-
- // ApiService.dart 
+// ApiService.dart - UPDATED & PRODUCTION READY
 Future<List<Map<String, dynamic>>> getPosts({
   required String userId,
-  String? dob,  // ⭐ NEW: Optional DOB param (DD-MM-YYYY)
+  String? dob,  // DD-MM-YYYY format (optional)
 }) async {
-  final uri = Uri.parse('$baseUrl/get_posts.php')
-      .replace(queryParameters: {
+  final uri = Uri.parse('$baseUrl/get_posts.php').replace(queryParameters: {
     'user_id': userId,
-    if (dob != null && dob.isNotEmpty) 'dob': dob,  // ✅ Backend expect 'dob'
+    if (dob != null && dob.isNotEmpty) 'dob': dob,  // Backend expects 'dob'
   });
   
   try {
-    final response = await http.get(uri);
+    print('🌐 Calling: ${uri.toString()}'); // Debug log
+    
+    final response = await http.get(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
+    
+    print('📡 Status: ${response.statusCode}');
+    print('📄 Response: ${response.body.substring(0, 200)}...'); // First 200 chars
+    
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
+      
       if (decoded is List) {
         return decoded
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
+      } else {
+        print('⚠️ Expected List, got: ${decoded.runtimeType}');
       }
+    } else {
+      print('❌ HTTP ${response.statusCode}: ${response.body}');
     }
-  } catch (e) {
-    print('GetPosts error: $e');  // Debug
+  } catch (e, stackTrace) {
+    print('💥 GetPosts ERROR: $e');
+    print('📍 Stack: $stackTrace');
   }
+  
   return [];
 }
+
 
   // ✅ NEW: Update Post (update_post.php) - PUT
   Future<Map<String, dynamic>> updatePost({
@@ -617,26 +635,58 @@ Future<Map<String, dynamic>> updateProfile({
       return {"success": false, "message": "Error: $e"};
     }
   }
+// 🔥 NEW: People Suggestions (DOB-based matching)
+Future<Map<String, dynamic>> getPeopleSuggestions({
+  required String userId,
+  int page = 1,
+  int limit = 20,
+}) async {
+  final uri = Uri.parse('$baseUrl/people_suggestions.php')
+      .replace(queryParameters: {
+    'user_id': userId,
+    'page': page.toString(),
+    'limit': limit.toString(),
+  });
 
-  // B. People suggestions: people_suggestions.php
-  Future<List<Map<String, dynamic>>> getPeopleSuggestions(String userId) async {
-    final url = Uri.parse('$baseUrl/people_suggestions.php?user_id=$userId');
-    try {
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded["success"] == true && decoded["data"] is List) {
-          return (decoded["data"] as List)
-              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
-              .toList();
-        }
+  try {
+    debugPrint('🔍 PEOPLE SUGGESTIONS: $uri');
+    
+    final response = await http.get(
+      uri,
+      headers: {"Content-Type": "application/json"},
+    );
+
+    debugPrint('🔍 SUGGESTIONS STATUS: ${response.statusCode}');
+    debugPrint('🔍 SUGGESTIONS BODY: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      
+      // ✅ Validate success response structure
+      if (decoded["success"] == true) {
+        return Map<String, dynamic>.from(decoded);
       }
-    } catch (e) {}
-    return [];
+      return {
+        "success": false,
+        "message": decoded["message"] ?? "Invalid response format",
+        "raw": response.body,
+      };
+    }
+    
+    return {
+      "success": false,
+      "message": "Server error: ${response.statusCode}",
+      "raw": response.body,
+    };
+  } catch (e) {
+    debugPrint('🔍 SUGGESTIONS ERROR: $e');
+    return {
+      "success": false,
+      "message": "Network error: $e",
+    };
   }
+}
+
 
   // C. My connections: my_connections.php
   Future<List<Map<String, dynamic>>> getMyConnections(String userId) async {
@@ -660,41 +710,41 @@ Future<Map<String, dynamic>> updateProfile({
 
   // D. Pending requests list: connection_requests.php
   Future<List<Map<String, dynamic>>> getConnectionRequests(String userId) async {
-    final url = Uri.parse('$baseUrl/connection_requests.php?user_id=$userId');
-    try {
-      final response = await http.get(
-        url,
-        headers: {"Content-Type": "application/json"},
-      );
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded["success"] == true && decoded["data"] is List) {
-          return (decoded["data"] as List)
-              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
-              .toList();
-        }
+  final url = Uri.parse('$baseUrl/connection_requests.php?user_id=$userId');
+  try {
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      // ✅ FIXED: "requests" instead of "data"
+      if (decoded["success"] == true && decoded["requests"] is List) {
+        return (decoded["requests"] as List)
+            .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+            .toList();
       }
-    } catch (e) {}
-    return [];
+    }
+  } catch (e) {
+    print('Requests error: $e');
   }
+  return [];
+}
 Future<List<Map<String, dynamic>>> getPendingConnections(String userId) async {
   final url = Uri.parse('$baseUrl/get_pending_connections.php?user_id=$userId');
   
   try {
-    print("🔍 FETCHING PENDING: $url"); // Debug log
-    
+    print("🔍 FETCHING PENDING: $url");
     final response = await http.get(
       url,
       headers: {"Content-Type": "application/json"},
     );
     
-    print("🔍 PENDING STATUS: ${response.statusCode}"); // Debug
-    print("🔍 PENDING BODY: ${response.body}");         // Debug
+    print("🔍 PENDING STATUS: ${response.statusCode}");
+    print("🔍 PENDING BODY: ${response.body}");
     
     if (response.statusCode == 200) {
       final decoded = json.decode(response.body);
-      if (decoded["success"] == true && decoded["data"] is List) {
-        return (decoded["data"] as List)
+      // ✅ FIXED: "pendingConnections" instead of "data"
+      if (decoded["success"] == true && decoded["pendingConnections"] is List) {
+        return (decoded["pendingConnections"] as List)
             .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
             .toList();
       }
@@ -735,35 +785,36 @@ Future<List<Map<String, dynamic>>> getPendingConnections(String userId) async {
   }
 
   // ================= NEW: SEARCH + PROFILE (LinkedIn style) =================
+// F. Search users: search_users.php - SIMPLIFIED
+Future<List<Map<String, dynamic>>> searchUsers({
+  required String currentUserId,
+  required String query,
+}) async {
+  final url = Uri.parse('$baseUrl/search_users.php');
+  final body = {
+    "user_id": int.parse(currentUserId),
+    "query": query,
+  };
 
-  // F. Search users: search_users.php
-  Future<List<Map<String, dynamic>>> searchUsers({
-    required String currentUserId,
-    required String query,
-  }) async {
-    final url = Uri.parse('$baseUrl/search_users.php');
-    final body = {
-      "user_id": int.parse(currentUserId),
-      "query": query,
-    };
-
-    try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: json.encode(body),
-      );
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded["success"] == true && decoded["users"] is List) {
-          return (decoded["users"] as List)
-              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
-              .toList();
-        }
+  try {
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: json.encode(body),
+    );
+    
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      if (decoded["success"] == true && decoded["users"] is List) {
+        return List<Map<String, dynamic>>.from(decoded["users"]);
       }
-    } catch (e) {}
-    return [];
+    }
+    debugPrint('❌ Search failed: ${response.body}');
+  } catch (e) {
+    debugPrint('💥 Search error: $e');
   }
+  return [];
+}
 
   Future<Map<String, dynamic>?> logout({required String userId}) async {
   try {
@@ -865,36 +916,8 @@ Future<List<Map<String, dynamic>>> getPendingConnections(String userId) async {
       return {"success": false, "message": "Error: $e"};
     }
   }
-  // API: get_people_suggestions.php?user_id=1&page=1&limit=20
-Future<Map<String, dynamic>> getPeopleSuggestionsV2({
-  required String userId,
-  int page = 1,
-  int limit = 20,
-}) async {
-  final url = Uri.parse(
-    '$baseUrl/get_people_suggestions.php?user_id=$userId&page=$page&limit=$limit',
-  );
+ 
 
-  try {
-    final response = await http.get(
-      url,
-      headers: {"Content-Type": "application/json"},
-    );
-
-    if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
-      return Map<String, dynamic>.from(decoded);
-    }
-
-    return {
-      "success": false,
-      "message": "Server error: ${response.statusCode}",
-      "raw": response.body,
-    };
-  } catch (e) {
-    return {"success": false, "message": "Network error: $e"};
-  }
-}
 // 🔥 NEW: Session Validation (check-session.php)
 Future<Map<String, dynamic>> checkSession(int userId) async {
   final url = Uri.parse('$baseUrl/check-session.php');
